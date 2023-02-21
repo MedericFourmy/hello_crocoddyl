@@ -20,8 +20,9 @@ from ocp_pbe_def import create_ocp_reaching_pbe
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_nohand.urdf"
-mesh_path = "/home/mfourmy/catkin_ws/src/franka_ros/franka_description/meshes/"
-robot = pin.RobotWrapper.BuildFromURDF(urdf_path, mesh_path)
+package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
+robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+
 delta_trans = np.array([0.2, 0.0, -0.0])
 
 # Number of shooting nodes

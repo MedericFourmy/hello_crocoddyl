@@ -2,6 +2,7 @@
 import time
 import numpy as np
 import pinocchio as pin
+# from bench_croco import MPCBenchmark
 
 np.set_printoptions(precision=4, linewidth=180)
 
@@ -12,9 +13,10 @@ PLOT = True
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_nohand.urdf"
-mesh_path = "/home/mfourmy/catkin_ws/src/franka_ros/franka_description/meshes/"
-robot = pin.RobotWrapper.BuildFromURDF(urdf_path, mesh_path)
-delta_trans = np.array([0.2, 0.1, -0.1])
+package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
+robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+
+delta_trans = np.array([0.2, 0.0, -0.0])
 
 # Number of shooting nodes
 T = 100
@@ -24,7 +26,7 @@ dt_ddp = 1e-2  # seconds
 dt_ddp_solve = 1e-2  # seconds
 
 # Simulation
-N_sim = 10000
+N_sim = 3000
 dt_sim = 1e-3
 
 # franka_control/config/start_pose.yaml
@@ -47,7 +49,7 @@ ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt_dd
 xs_init = [x0 for i in range(T + 1)]
 us_init = ddp.problem.quasiStatic(xs_init[:-1])
 # Initial solution
-ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+x_traj, u_traj, success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 
 qk_sim, vk_sim = q0, v0
 
@@ -71,13 +73,14 @@ for k in range(N_sim):
     ddp.problem.x0 = xk_sim
     xs_init = list(ddp.xs[1:]) + [ddp.xs[-1]]  # shift solution
     xs_init[0] = xk_sim
-    us_init = list(ddp.us[1:]) + [ddp.us[-1]] 
+    us_init = list(ddp.us[1:]) + [ddp.us[-1]]
 
     # Solve
     t1 = time.time()
-    ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+    success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+    print(success)
     t_solve.append(tk)
-    dt_solve.append(time.time() - t1)
+    dt_solve.append(1e3*(time.time() - t1))
 
     # using current torque cmd, compute simulation acceleration 
     u_ref_mpc = ddp.us[0]
@@ -98,10 +101,6 @@ for k in range(N_sim):
     v_sim_arr[k,:] = vk_sim
     dv_sim_arr[k,:] = dvk_sim
     u_ref_arr[k,:] = u_ref_mpc
-
-
-
-
 
 
 
@@ -175,7 +174,7 @@ if PLOT:
     # Solve time
     fig, ax = plt.subplots(1,1)
     fig.canvas.manager.set_window_title('solve_times')
-    fig.suptitle('Solve times', size=18)
+    fig.suptitle('Solve times (ms)', size=18)
     ax.plot(t_solve, dt_solve)
     ax.set_xlabel('Time (s)', fontsize=16)
 
