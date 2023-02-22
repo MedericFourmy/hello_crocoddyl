@@ -6,10 +6,9 @@ import pinocchio as pin
 def linear_interpolation(x, x1, x2, y1, y2):
     return y1 + ((x - x1) / (x2 - x1)) * (y2 - y1)
 
-def tanh_interpolation(x, low, high, xb):
-    x_norm = x / (max(x) - min(x))
-    x_norm = 2*xb*(x_norm - 0.5)
-    return low + high*(np.tanh(x_norm) + 1) 
+def tanh_interpolation(x, low, high, scale, shift=0):
+    x_norm = linear_interpolation(x, 0, len(x), scale*(-1 - shift), scale*(1 - shift))
+    return low + high*(np.tanh(x_norm)+1) 
 
 def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goal_is_se3=True, verbose=False):
     # # # # # # # # # # # # # # #
@@ -36,14 +35,6 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
 
     ###################
     # Create cost terms
-    # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
-    uResidual = crocoddyl.ResidualModelControlGrav(state)
-    uRegCost = crocoddyl.CostModelResidual(state, uResidual)
-
-    # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
-    # cost = activation(weight.N_nodes*residual)
-    xResidual = crocoddyl.ResidualModelState(state, x0)
-    xRegCost = crocoddyl.CostModelResidual(state,  xResidual)
 
     # end translation cost: r(x_i, u_i) = translation(q_i) - t_ref
     frameGoalResidual = None
@@ -54,14 +45,37 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
     frameGoalCost = crocoddyl.CostModelResidual(state, frameGoalResidual)
 
 
+    # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
+    xRegCost = crocoddyl.CostModelResidual(state,  
+                                           crocoddyl.ResidualModelState(state, x0))
+
+    # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
+    uRegCost = crocoddyl.CostModelResidual(state, 
+                                           crocoddyl.ResidualModelControlGrav(state, actuation.nu))
+
+
 
     # WEIGTHS
-    # w_frame_low = 10
+    w_x_reg = 1e-1
+    w_x_reg_arr = w_x_reg*np.array([
+        1, 1, 1, 1, 1, 1, 1,
+        1, 1, 1, 1, 1, 1, 1,
+    ])
+    w_u_reg = 1e-3
+
+    w_u_reg_arr = w_u_reg*np.array([
+        10, 1, 1, 1, 1, 1, 1
+    ])
+    
     w_frame_low = 0.0001
     w_frame_high = 10
 
-    # w_frame_schedule = linear_interpolation(np.arange(N_nodes), 0, N_nodes-1, w_frame_low, w_frame_high)
-    w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_frame_low, w_frame_high, xb=5)
+
+
+    w_frame_schedule = linear_interpolation(np.arange(N_nodes), 0, N_nodes-1, w_frame_low, w_frame_high)
+    # w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_frame_low, w_frame_high, 5, 0)
+    # w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_frame_low, w_frame_high, 8, 0.5)
+
 
     print('w_frame_schedule[:5]: ', w_frame_schedule[:5])
     print('w_frame_schedule[-5:]: ', w_frame_schedule[-5:])
@@ -72,8 +86,20 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
     runningModel_lst = []
     for i in range(N_nodes):
         runningCostModel = crocoddyl.CostModelSum(state)
-        runningCostModel.addCost("stateReg", xRegCost, 1e-1)
-        runningCostModel.addCost("ctrlRegGrav", uRegCost, 1e-3)
+
+        # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
+        xRegCost = crocoddyl.CostModelResidual(state, 
+                                               crocoddyl.ActivationModelWeightedQuad(w_x_reg_arr**2), 
+                                               crocoddyl.ResidualModelState(state, x0, actuation.nu))
+
+        # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
+        uRegCost = crocoddyl.CostModelResidual(state, 
+                                               crocoddyl.ActivationModelWeightedQuad(w_u_reg_arr**2), 
+                                               crocoddyl.ResidualModelControlGrav(state, actuation.nu))
+
+
+        runningCostModel.addCost("stateReg", xRegCost, 1)
+        runningCostModel.addCost("ctrlRegGrav", uRegCost, 1)
         runningCostModel.addCost(goal_cost_name, frameGoalCost, w_frame_schedule[i])
         # Create Differential Action Model (DAM), i.e. continuous dynamics and cost functions
         running_DAM = crocoddyl.DifferentialActionModelFreeFwdDynamics(
@@ -82,16 +108,17 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
         # Create Integrated Action Model (IAM), i.e. Euler integration of continuous dynamics and cost
         runningModel = crocoddyl.IntegratedActionModelEuler(running_DAM, dt)
         # Optionally add armature to take into account actuator's inertia
-        # runningModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.])
-        runningModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        runningModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.])
+        # runningModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
         runningModel_lst.append(runningModel)
     
     ###############
     # Terminal cost
     terminalCostModel = crocoddyl.CostModelSum(state)
-    terminalCostModel.addCost("stateReg", xRegCost, 1e-1)
-    terminalCostModel.addCost(goal_cost_name, frameGoalCost, 10)
+    terminalCostModel.addCost("stateReg", xRegCost, w_x_reg)
+    terminalCostModel.addCost("ctrlRegGrav", uRegCost, w_u_reg)
+    terminalCostModel.addCost(goal_cost_name, frameGoalCost, w_frame_high)
 
     terminal_DAM = crocoddyl.DifferentialActionModelFreeFwdDynamics(
         state, actuation, terminalCostModel
