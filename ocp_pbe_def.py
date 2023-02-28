@@ -1,6 +1,5 @@
 import crocoddyl
 import numpy as np
-import pinocchio as pin
 
 
 def linear_interpolation(x, x1, x2, y1, y2):
@@ -8,7 +7,7 @@ def linear_interpolation(x, x1, x2, y1, y2):
 
 def tanh_interpolation(x, low, high, scale, shift=0):
     x_norm = linear_interpolation(x, 0, len(x), scale*(-1 - shift), scale*(1 - shift))
-    return low + high*(np.tanh(x_norm)+1) 
+    return low + 0.5*high*(np.tanh(x_norm)+1)
 
 def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goal_is_se3=True, verbose=False):
     # # # # # # # # # # # # # # #
@@ -61,24 +60,22 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
         1, 1, 1, 1, 1, 1, 1,
         1, 1, 1, 1, 1, 1, 1,
     ])
-    w_u_reg = 1e-3
 
+    w_u_reg = 1e-4
     w_u_reg_arr = w_u_reg*np.array([
-        10, 1, 1, 1, 1, 1, 1
+        1, 1, 1, 1, 1, 1, 1
     ])
     
-    w_frame_low = 0.0001
-    w_frame_high = 10
+    w_running_frame_low = 1e-3
+    w_running_frame_high = 10
+    w_final_frame_high = 10
 
 
 
-    w_frame_schedule = linear_interpolation(np.arange(N_nodes), 0, N_nodes-1, w_frame_low, w_frame_high)
-    # w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_frame_low, w_frame_high, 5, 0)
-    # w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_frame_low, w_frame_high, 8, 0.5)
+    # w_frame_schedule = linear_interpolation(np.arange(N_nodes), 0, N_nodes-1, w_running_frame_low, w_running_frame_high)
+    # w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_running_frame_low, w_running_frame_high, 5, 0)
+    w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_running_frame_low, w_running_frame_high, 8, 0.5)
 
-
-    print('w_frame_schedule[:5]: ', w_frame_schedule[:5])
-    print('w_frame_schedule[-5:]: ', w_frame_schedule[-5:])
 
     ###############
     # Running costs
@@ -118,7 +115,7 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
     terminalCostModel = crocoddyl.CostModelSum(state)
     terminalCostModel.addCost("stateReg", xRegCost, w_x_reg)
     terminalCostModel.addCost("ctrlRegGrav", uRegCost, w_u_reg)
-    terminalCostModel.addCost(goal_cost_name, frameGoalCost, w_frame_high)
+    terminalCostModel.addCost(goal_cost_name, frameGoalCost, w_final_frame_high)
 
     terminal_DAM = crocoddyl.DifferentialActionModelFreeFwdDynamics(
         state, actuation, terminalCostModel

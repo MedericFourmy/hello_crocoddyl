@@ -1,15 +1,15 @@
 
-import crocoddyl
 import numpy as np
 import pinocchio as pin
 # np.set_printoptions(precision=4, linewidth=180)
 import ocp_utils
 import time
 import matplotlib.pyplot as plt
-from matplotlib.ticker import FormatStrFormatter
-
 
 from ocp_pbe_def import create_ocp_reaching_pbe
+from bench_croco import MPCBenchmark
+
+
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_nohand.urdf"
@@ -34,15 +34,20 @@ N_SOLVE = 5
 
 NX, NY = 10, 10
 # NX, NY = 10, 5
-dx_vals = np.linspace(-0.6, 0.6, NX)
+dx_vals = np.linspace(-0.5, 0.6, NX)
 dy_vals = np.linspace(-0.6, 0.6, NY)
 dx_vals = np.around(dx_vals, 2)
 dy_vals = np.around(dy_vals, 2)
 
 t_solve_avg = np.zeros((NX, NY))
+t_solve_avg_bench = np.zeros((NX, NY))
 t_solve_std = np.zeros((NX, NY))
 t_solve_ws_avg = np.zeros((NX, NY))
+t_solve_ws_avg_bench = np.zeros((NX, NY))
 t_solve_ws_std = np.zeros((NX, NY))
+
+
+bench = MPCBenchmark()
 
 
 # Warm start : initial state + gravity compensation
@@ -58,30 +63,50 @@ for i, dx in enumerate(dx_vals):
         # TODO: change ref instead of creating new one
         ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt, goal_is_se3=False, verbose=False)
 
-        # Solve
+        # Solve and measure timings
+        bench.reset_profiles()
+        bench.start_croco_profiler()
+        
         solve_times = np.zeros(N_SOLVE)
         solve_times_ws = np.zeros(N_SOLVE)
-        for k in range(N_SOLVE):
 
+        xs_init_lst = []
+        us_init_lst = []
+        for k in range(N_SOLVE):
             t1 = time.time()
             # Quasi-static warm start
             us_init = ddp.problem.quasiStatic(xs_init[:-1])
             ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
             solve_times[k] = 1e3*(time.time() - t1)
 
+            xs_init_lst.append(ddp.xs)
+            us_init_lst.append(ddp.us) 
+        
+        bench.stop_croco_profiler()
+        bench.record_profiles()
+        t_solve_avg[i,j] = solve_times.mean()
+        # bench.print_croco_profiler()
+        # print("bench.avg['SolverFDDP::solve']")
+        # print(bench.avg['SolverFDDP::solve'])
+        t_solve_avg_bench[i,j] = bench.avg['SolverFDDP::solve'][0]
+        t_solve_std[i,j] = np.sqrt(np.std(solve_times - solve_times.mean()))
+        
+        bench.reset_profiles()
+        bench.start_croco_profiler()
+        for k in range(N_SOLVE):
             t1 = time.time()
             # Previous solution warm start 
             ddp.problem.x0 = x0
-            xs_init = ddp.xs
-            us_init = ddp.us 
+            xs_init = xs_init_lst[k]
+            us_init = us_init_lst[k]
             ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
             ddp_data_warm = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
             solve_times_ws[k] = 1e3*(time.time() - t1)
         
-        t_solve_avg[i,j] = solve_times.mean()
-        t_solve_std[i,j] = np.sqrt(np.std(solve_times - solve_times.mean()))
-
+        bench.stop_croco_profiler()
+        bench.record_profiles()
         t_solve_ws_avg[i,j] = solve_times_ws.mean()
+        t_solve_ws_avg_bench[i,j] = bench.avg['SolverFDDP::solve'][0]
         t_solve_ws_std[i,j] = np.sqrt(np.std(solve_times_ws - solve_times_ws.mean()))
 
 
@@ -91,6 +116,21 @@ im = plt.imshow(t_solve_avg)
 plt.xticks(np.arange(NX), labels=dx_vals)
 plt.yticks(np.arange(NY), labels=dy_vals)
 cbar = fig.colorbar(im, ax=fig.axes[0])
+
+# fig = plt.figure('solve time avg BENCH')
+# im = plt.imshow(t_solve_avg)
+# plt.xticks(np.arange(NX), labels=dx_vals)
+# plt.yticks(np.arange(NY), labels=dy_vals)
+# cbar = fig.colorbar(im, ax=fig.axes[0])
+
+#############################
+# NO DIFFERENCE
+#############################
+# fig = plt.figure('solve time avg BENCH vs TIME')
+# im = plt.imshow(t_solve_avg_bench - t_solve_avg_bench)
+# plt.xticks(np.arange(NX), labels=dx_vals)
+# plt.yticks(np.arange(NY), labels=dy_vals)
+# cbar = fig.colorbar(im, ax=fig.axes[0])
 
 
 fig = plt.figure('solve time std')
@@ -105,6 +145,11 @@ plt.xticks(np.arange(NX), labels=dx_vals)
 plt.yticks(np.arange(NY), labels=dy_vals)
 cbar = fig.colorbar(im, ax=fig.axes[0])
 
+# fig = plt.figure('solve time WS avg BENCH')
+# im = plt.imshow(t_solve_ws_avg_bench)
+# plt.xticks(np.arange(NX), labels=dx_vals)
+# plt.yticks(np.arange(NY), labels=dy_vals)
+# cbar = fig.colorbar(im, ax=fig.axes[0])
 
 fig = plt.figure('solve time WS std')
 plt.imshow(t_solve_ws_std)

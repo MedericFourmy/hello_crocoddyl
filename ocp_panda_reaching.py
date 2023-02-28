@@ -15,6 +15,7 @@ import pinocchio as pin
 
 np.set_printoptions(precision=4, linewidth=180)
 import ocp_utils
+from bench_croco import MPCBenchmark
 
 from ocp_pbe_def import create_ocp_reaching_pbe
 
@@ -43,10 +44,23 @@ print(oMe_0)
 
 ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt, goal_is_se3=True, verbose=False)
 
+bench = MPCBenchmark()
+bench.start_croco_profiler()
+
 # Warm start : initial state + gravity compensation
 xs_init = [x0 for i in range(T + 1)]
 us_init = ddp.problem.quasiStatic(xs_init[:-1])
 ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+
+bench.stop_croco_profiler()
+bench.record_profiles()
+# bench.plot_timer()
+bench.plot_profiles()
+
 # Extract DDP data and plot
 ddp_data = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
 
