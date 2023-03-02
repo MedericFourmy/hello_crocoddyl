@@ -16,7 +16,9 @@ urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_
 package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
 robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
 
-delta_trans = np.array([0.2, 0.0, -0.0])
+# delta_trans = np.array([0.2, 0.0, -0.0])
+delta_trans = np.array([0.5, 0.4, -0.0])
+# -0.5, 0.6
 
 # Number of shooting nodes
 T = 100
@@ -49,13 +51,14 @@ ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt_dd
 xs_init = [x0 for i in range(T + 1)]
 us_init = ddp.problem.quasiStatic(xs_init[:-1])
 # Initial solution
-x_traj, u_traj, success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 
 qk_sim, vk_sim = q0, v0
 
 # Logs
 t_solve = []
 dt_solve = []
+nb_iter_solve = []
 q_sim_arr = np.zeros((N_sim, 7))
 v_sim_arr = np.zeros((N_sim, 7))
 dv_sim_arr = np.zeros((N_sim, 7))
@@ -77,10 +80,11 @@ for k in range(N_sim):
 
     # Solve
     t1 = time.time()
-    success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
-    print(success)
+    success = ddp.solve(xs_init, us_init, maxiter=3, isFeasible=False)
     t_solve.append(tk)
     dt_solve.append(1e3*(time.time() - t1))
+    nb_iter_solve.append(ddp.iter)
+    
 
     # using current torque cmd, compute simulation acceleration 
     u_ref_mpc = ddp.us[0]
@@ -94,13 +98,13 @@ for k in range(N_sim):
     vk_sim += dvk_sim*dt_sim
     qk_sim = pin.integrate(robot.model, qk_sim, v_mean*dt_sim)
 
-
     # Logs
     t_sim_arr[k] = tk
     q_sim_arr[k,:] = qk_sim
     v_sim_arr[k,:] = vk_sim
     dv_sim_arr[k,:] = dvk_sim
     u_ref_arr[k,:] = u_ref_mpc
+
 
 
 
@@ -172,11 +176,13 @@ if PLOT:
     axes[-1].set_xlabel('Time (s)', fontsize=16)
 
     # Solve time
-    fig, ax = plt.subplots(1,1)
+    fig, axes = plt.subplots(2,1)
     fig.canvas.manager.set_window_title('solve_times')
-    fig.suptitle('Solve times (ms)', size=18)
-    ax.plot(t_solve, dt_solve)
-    ax.set_xlabel('Time (s)', fontsize=16)
+    axes[0].set_title('Solve times (ms)', size=18)
+    axes[0].plot(t_solve, dt_solve)
+    axes[0].set_title('# iterations', size=18)
+    axes[1].plot(t_solve, nb_iter_solve)
+    axes[1].set_xlabel('Time (s)', fontsize=16)
 
 
     plt.show()

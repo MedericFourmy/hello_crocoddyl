@@ -62,7 +62,7 @@ def get_p_(q, model, id_endeff):
 
 
 # Get frame linear velocity
-def get_v(q, dq, pin_robot, id_endeff, ref=pin.LOCAL):
+def get_v(q, dq, pin_robot, id_endeff, ref=pin.LOCAL_WORLD_ALIGNED):
     '''
     Returns end-effector velocities given q,dq trajectory 
         q         : joint positions
@@ -72,7 +72,7 @@ def get_v(q, dq, pin_robot, id_endeff, ref=pin.LOCAL):
     '''
     return get_v_(q, dq, pin_robot.model, id_endeff, ref)
 
-def get_v_(q, dq, model, id_endeff, ref=pin.LOCAL):
+def get_v_(q, dq, model, id_endeff, ref=pin.LOCAL_WORLD_ALIGNED):
     '''
     Returns end-effector velocities given q,dq trajectory 
         q         : joint positions
@@ -87,7 +87,7 @@ def get_v_(q, dq, model, id_endeff, ref=pin.LOCAL):
         # J = pin.computeFrameJacobian(model, data, q, id_endeff)
         # v = J.dot(dq)[:3] 
         pin.forwardKinematics(model, data, q, dq)
-        spatial_vel =  pin.getFrameVelocity(model, data, id_endeff, ref)
+        spatial_vel = pin.getFrameVelocity(model, data, id_endeff, ref)
         v = spatial_vel.linear
     else:
         N = np.shape(q)[0]
@@ -96,7 +96,7 @@ def get_v_(q, dq, model, id_endeff, ref=pin.LOCAL):
             # J = pin.computeFrameJacobian(model, data, q[i,:], id_endeff)
             # v[i,:] = J.dot(dq[i])[:3] 
             pin.forwardKinematics(model, data, q[i], dq[i])
-            spatial_vel =  pin.getFrameVelocity(model, data, id_endeff, ref)
+            spatial_vel = pin.getFrameVelocity(model, data, id_endeff, ref)
             v[i,:] = spatial_vel.linear    
     return v
 

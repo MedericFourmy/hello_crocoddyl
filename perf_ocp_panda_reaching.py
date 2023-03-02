@@ -16,8 +16,6 @@ urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_
 package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
 robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
 
-delta_trans = np.array([0.2, 0.0, -0.0])
-
 # Number of shooting nodes
 T = 100
 dt = 1e-2  # seconds
@@ -32,10 +30,10 @@ oMe_0 = robot.framePlacement(q0, robot.model.getFrameId(ee_frame_name), update_k
 
 N_SOLVE = 5
 
-NX, NY = 10, 10
+NX, NY = 25, 25
 # NX, NY = 10, 5
-dx_vals = np.linspace(-0.5, 0.6, NX)
-dy_vals = np.linspace(-0.6, 0.6, NY)
+dx_vals = np.linspace(-0.8, 0.3, NX)
+dy_vals = np.linspace(-0.5, 0.5, NY)
 dx_vals = np.around(dx_vals, 2)
 dy_vals = np.around(dy_vals, 2)
 
@@ -46,6 +44,10 @@ t_solve_ws_avg = np.zeros((NX, NY))
 t_solve_ws_avg_bench = np.zeros((NX, NY))
 t_solve_ws_std = np.zeros((NX, NY))
 
+nb_iter_avg = np.zeros((NX, NY))
+nb_iter_std = np.zeros((NX, NY))
+nb_iter_avg_ws = np.zeros((NX, NY))
+nb_iter_std_ws = np.zeros((NX, NY))
 
 bench = MPCBenchmark()
 
@@ -67,17 +69,18 @@ for i, dx in enumerate(dx_vals):
         bench.reset_profiles()
         bench.start_croco_profiler()
         
-        solve_times = np.zeros(N_SOLVE)
-        solve_times_ws = np.zeros(N_SOLVE)
-
         xs_init_lst = []
         us_init_lst = []
+        solve_times = np.zeros(N_SOLVE)
+        nb_iter = np.zeros(N_SOLVE)
         for k in range(N_SOLVE):
             t1 = time.time()
             # Quasi-static warm start
             us_init = ddp.problem.quasiStatic(xs_init[:-1])
             ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+            # perf logs
             solve_times[k] = 1e3*(time.time() - t1)
+            nb_iter[k] = ddp.iter
 
             xs_init_lst.append(ddp.xs)
             us_init_lst.append(ddp.us) 
@@ -90,9 +93,14 @@ for i, dx in enumerate(dx_vals):
         # print(bench.avg['SolverFDDP::solve'])
         t_solve_avg_bench[i,j] = bench.avg['SolverFDDP::solve'][0]
         t_solve_std[i,j] = np.sqrt(np.std(solve_times - solve_times.mean()))
-        
+        nb_iter_avg[i,j] = nb_iter.mean()
+        nb_iter_std[i,j] = np.sqrt(np.std(nb_iter - nb_iter.mean()))
+
+        # Warm start
         bench.reset_profiles()
         bench.start_croco_profiler()
+        solve_times_ws = np.zeros(N_SOLVE)
+        nb_iter_ws = np.zeros(N_SOLVE)
         for k in range(N_SOLVE):
             t1 = time.time()
             # Previous solution warm start 
@@ -100,15 +108,17 @@ for i, dx in enumerate(dx_vals):
             xs_init = xs_init_lst[k]
             us_init = us_init_lst[k]
             ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
-            ddp_data_warm = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
+            # perf logs
             solve_times_ws[k] = 1e3*(time.time() - t1)
+            nb_iter_ws[k] = ddp.iter
         
         bench.stop_croco_profiler()
         bench.record_profiles()
         t_solve_ws_avg[i,j] = solve_times_ws.mean()
         t_solve_ws_avg_bench[i,j] = bench.avg['SolverFDDP::solve'][0]
         t_solve_ws_std[i,j] = np.sqrt(np.std(solve_times_ws - solve_times_ws.mean()))
-
+        nb_iter_avg_ws[i,j] = nb_iter_ws.mean()
+        nb_iter_std_ws[i,j] = np.sqrt(np.std(nb_iter_ws - nb_iter_ws.mean()))
 
 
 fig = plt.figure('solve time avg')
@@ -153,6 +163,37 @@ cbar = fig.colorbar(im, ax=fig.axes[0])
 
 fig = plt.figure('solve time WS std')
 plt.imshow(t_solve_ws_std)
+plt.xticks(np.arange(NX), labels=dx_vals)
+plt.yticks(np.arange(NY), labels=dy_vals)
+cbar = fig.colorbar(im, ax=fig.axes[0])
+
+
+##############################################
+# NB ITERATIONS
+##############################################
+
+
+
+fig = plt.figure('nb iterations avg')
+im = plt.imshow(nb_iter_avg)
+plt.xticks(np.arange(NX), labels=dx_vals)
+plt.yticks(np.arange(NY), labels=dy_vals)
+cbar = fig.colorbar(im, ax=fig.axes[0])
+
+fig = plt.figure('nb iterations std')
+im = plt.imshow(nb_iter_std)
+plt.xticks(np.arange(NX), labels=dx_vals)
+plt.yticks(np.arange(NY), labels=dy_vals)
+cbar = fig.colorbar(im, ax=fig.axes[0])
+
+fig = plt.figure('nb iterations avg WS')
+im = plt.imshow(nb_iter_avg_ws)
+plt.xticks(np.arange(NX), labels=dx_vals)
+plt.yticks(np.arange(NY), labels=dy_vals)
+cbar = fig.colorbar(im, ax=fig.axes[0])
+
+fig = plt.figure('nb iterations std WS')
+im = plt.imshow(nb_iter_std_ws)
 plt.xticks(np.arange(NX), labels=dx_vals)
 plt.yticks(np.arange(NY), labels=dy_vals)
 cbar = fig.colorbar(im, ax=fig.axes[0])

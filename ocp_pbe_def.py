@@ -44,36 +44,29 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
     frameGoalCost = crocoddyl.CostModelResidual(state, frameGoalResidual)
 
 
-    # # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
-    # xRegCost = crocoddyl.CostModelResidual(state,  
-    #                                        crocoddyl.ResidualModelState(state, x0))
-
-    # # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
-    # uRegCost = crocoddyl.CostModelResidual(state, 
-    #                                        crocoddyl.ResidualModelControlGrav(state, actuation.nu))
-
-
-
-    # WEIGTHS
-    w_x_reg = 1e-1
-    # w_x_reg_arr = np.array([
-    #     1, 1, 1, 1, 1, 1, 1,
-    #     0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1
-    # ])
-
-
-    w_x_reg_arr = np.array(
-        7*[0.1] + 7*[0.1]
+    ##############
+    # Task weigths
+    ##############
+    # EE pose
+    w_running_frame_low = 0.0
+    w_running_frame_high = 0.0
+    w_final_frame_high = 1000.0
+    
+    w_x_reg_running = 1.0
+    diag_x_reg_running = np.array(
+        7*[0.0] + 7*[1.0]
+    )
+    w_x_reg_terminal = 10.0
+    diag_x_reg_terminal = np.array(
+        7*[0.0] + 7*[1.0]
     )
 
-    w_u_reg = 1e-3
-    w_u_reg_arr = np.array([
+    w_u_reg_running = 0.01
+    diag_u_reg_arr = np.array([
         1, 1, 1, 1, 1, 1, 10
     ])
     
-    w_running_frame_low = 0
-    w_running_frame_high = 0
-    w_final_frame_high = 0.1
+
 
 
     # w_frame_schedule = linear_interpolation(np.arange(N_nodes), 0, N_nodes-1, w_running_frame_low, w_running_frame_high)
@@ -90,17 +83,17 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
 
         # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
         xRegCost = crocoddyl.CostModelResidual(state, 
-                                               crocoddyl.ActivationModelWeightedQuad(w_x_reg_arr**2), 
+                                               crocoddyl.ActivationModelWeightedQuad(diag_x_reg_running**2), 
                                                crocoddyl.ResidualModelState(state, x0, actuation.nu))
 
         # Control regularization cost: r(x_i, u_i) = tau_i - g(q_i)
         uRegCost = crocoddyl.CostModelResidual(state, 
-                                               crocoddyl.ActivationModelWeightedQuad(w_u_reg_arr**2), 
+                                               crocoddyl.ActivationModelWeightedQuad(diag_u_reg_arr**2), 
                                                crocoddyl.ResidualModelControlGrav(state, actuation.nu))
 
 
-        runningCostModel.addCost("stateReg", xRegCost, w_x_reg)
-        runningCostModel.addCost("ctrlRegGrav", uRegCost, w_u_reg)
+        runningCostModel.addCost("stateReg", xRegCost, w_x_reg_running)
+        runningCostModel.addCost("ctrlRegGrav", uRegCost, w_u_reg_running)
         runningCostModel.addCost(goal_cost_name, frameGoalCost, w_frame_schedule[i])
         # Create Differential Action Model (DAM), i.e. continuous dynamics and cost functions
         running_DAM = crocoddyl.DifferentialActionModelFreeFwdDynamics(
@@ -115,15 +108,16 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
     
     ###############
     # Terminal cost
+    # !! weights scale has a different meaning here since
+    # weights in the running cost are multiplied by dt 
+    ###############
     terminalCostModel = crocoddyl.CostModelSum(state)
-    w_x_reg_final = np.array(
-        7*[0.0] + 7*[0.1]
-    )
     xRegCost = crocoddyl.CostModelResidual(state, 
-                                        crocoddyl.ActivationModelWeightedQuad(w_x_reg_final**2), 
+                                        crocoddyl.ActivationModelWeightedQuad(diag_x_reg_terminal**2), 
                                         crocoddyl.ResidualModelState(state, x0, actuation.nu))
 
-    terminalCostModel.addCost("stateReg", xRegCost, 1)
+    # terminalCostModel.addCost("stateReg", xRegCost, w_x_reg)
+    terminalCostModel.addCost("stateReg", xRegCost, w_x_reg_terminal)
     terminalCostModel.addCost(goal_cost_name, frameGoalCost, w_final_frame_high)
 
     terminal_DAM = crocoddyl.DifferentialActionModelFreeFwdDynamics(
@@ -133,15 +127,12 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
     # Optionally add armature to take into account actuator's inertia
     terminalModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
-
-
     # Create the shooting problem
     problem = crocoddyl.ShootingProblem(x0, runningModel_lst, terminalModel)
 
     # Create solver + callbacks
     ddp = crocoddyl.SolverFDDP(problem)
-    # if verbose:
-    
-    ddp.setCallbacks([crocoddyl.CallbackLogger(), crocoddyl.CallbackVerbose()])
+    if verbose:
+        ddp.setCallbacks([crocoddyl.CallbackLogger(), crocoddyl.CallbackVerbose()])
 
     return ddp
