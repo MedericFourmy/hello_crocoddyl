@@ -75,12 +75,12 @@ bench.record_profiles()
 # Extract DDP data and plot
 ddp_data = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
 
-# #  Warm start using exactly the previous solution
-# ddp.problem.x0 = x0
-# xs_init = ddp.xs
-# us_init = ddp.us 
-# ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
-# ddp_data = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
+#  Warm start using exactly the previous solution
+ddp.problem.x0 = x0
+xs_init = ddp.xs
+us_init = ddp.us 
+ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
+ddp_data = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
 
 # solution joint trajectory
 xs = np.array(ddp.xs)

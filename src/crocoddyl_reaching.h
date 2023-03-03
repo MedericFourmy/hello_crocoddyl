@@ -40,7 +40,7 @@
 #include <crocoddyl/multibody/residuals/state.hpp>
 #include <crocoddyl/multibody/residuals/frame-translation.hpp>
 // #include <crocoddyl/multibody/residuals/frame-rotation.hpp>
-// #include <crocoddyl/multibody/residuals/frame-velocity.hpp>
+#include <crocoddyl/multibody/residuals/frame-velocity.hpp>
 // #include <crocoddyl/multibody/residuals/contact-force.hpp>
 
 
@@ -84,7 +84,9 @@ class CrocoddylReaching
         */
         double w_running_frame_low = 0.0;
         double w_running_frame_high = 0.0;
-        double w_final_frame_high = 1000.0;
+        double w_frame_terminal = 1000.0;
+
+        double w_frame_vel_terminal = 10.0;
         
         double w_x_reg_running = 1.0;
         Eigen::Matrix<double,7,1> diag_q_reg_running = 0*Eigen::Matrix<double,7,1>::Ones();  
@@ -102,13 +104,12 @@ class CrocoddylReaching
         // Frame translation
         boost::shared_ptr<crocoddyl::CostModelAbstract> frame_goal_cost = 
             boost::make_shared<crocoddyl::CostModelResidual>(state, 
-                        boost::make_shared<crocoddyl::ResidualModelFrameTranslation>(state, end_effector_frame_id, _config.goal_trans, actuation->get_nu()));
+                boost::make_shared<crocoddyl::ResidualModelFrameTranslation>(state, end_effector_frame_id, _config.goal_trans, actuation->get_nu()));
 
-        // // Frame velocity cost
-        // Eigen::VectorXd desired_vel = Eigen::VectorXd::Zero(6);
-        // boost::shared_ptr<crocoddyl::CostModelAbstract> frame_velocity_cost = 
-        //     boost::make_shared<crocoddyl::CostModelResidual>(state, 
-        //                     boost::make_shared<crocoddyl::ResidualModelFrameVelocity>(state, end_effector_frame_id, pinocchio::Motion(desired_vel), pinocchio::WORLD, actuation->get_nu()));
+        // Frame velocity cost
+        boost::shared_ptr<crocoddyl::CostModelAbstract> frame_velocity_cost = 
+            boost::make_shared<crocoddyl::CostModelResidual>(state,  
+                boost::make_shared<crocoddyl::ResidualModelFrameVelocity>(state, end_effector_frame_id, pinocchio::Motion::Zero(), pinocchio::LOCAL_WORLD_ALIGNED, actuation->get_nu()));
         
 
         running_models_ = std::vector< boost::shared_ptr<crocoddyl::ActionModelAbstract> >(_config.T);
@@ -154,7 +155,9 @@ class CrocoddylReaching
                                                     boost::make_shared<crocoddyl::ResidualModelState>(state, _config.x0, actuation->get_nu()));
 
         terminalCostModel.get()->addCost("state_reg", state_reg_cost, w_x_reg_terminal);
-        terminalCostModel.get()->addCost(goal_cost_name, frame_goal_cost, w_final_frame_high);
+        terminalCostModel.get()->addCost(goal_cost_name, frame_goal_cost, w_frame_terminal);
+        terminalCostModel.get()->addCost("terminal_vel", frame_velocity_cost, w_frame_vel_terminal);
+
 
         boost::shared_ptr<crocoddyl::DifferentialActionModelFreeFwdDynamics> terminalDAM =
             boost::make_shared<crocoddyl::DifferentialActionModelFreeFwdDynamics>(state, actuation, terminalCostModel);
