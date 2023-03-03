@@ -36,8 +36,8 @@ robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
 delta_trans = np.array([-0.31, -0.5, -0.0])
 
 # Number of shooting nodes
-N_nodes = 200
-dt_nodes = 1e-2  # seconds
+T = 200
+dt_ocp = 1e-2  # seconds
 
 # franka_control/config/start_pose.yaml
 q0 = np.array([0, -0.785398163397, 0, -2.35619449019, 0, 1.57079632679, 0.785398163397])
@@ -51,7 +51,7 @@ oMe_goal.translation += delta_trans
 oMe_goal.rotation = np.eye(3)
 print(oMe_0)
 
-ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, N_nodes, dt_nodes, goal_is_se3=GOAL_IS_SE3, verbose=VERBOSE)
+ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt_ocp, goal_is_se3=GOAL_IS_SE3, verbose=VERBOSE)
 # ddp.th_stop = 1e-15
 
 
@@ -59,8 +59,12 @@ bench = MPCBenchmark()
 bench.start_croco_profiler()
 
 # Warm start : initial state + gravity compensation
-xs_init = [x0 for i in range(N_nodes + 1)]
+xs_init = [x0 for i in range(T + 1)]
+# TODO: check same as 
 us_init = ddp.problem.quasiStatic(xs_init[:-1])
+us_init_bis = np.array(
+    [robot.gravity(q0)]
+)
 ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 
 bench.stop_croco_profiler()
@@ -109,9 +113,9 @@ if SAVE:
     v_arr = x_arr[:-1,-7:]
     tau_arr = np.array(ddp.us)
 
-    t_arr1 = dt_nodes*np.arange(N_nodes)
+    t_arr1 = dt_ocp*np.arange(T)
     dt_control = 1e-3
-    t_arr2 = dt_control*np.arange(int(N_nodes*(dt_nodes/dt_control)))
+    t_arr2 = dt_control*np.arange(int(T*(dt_ocp/dt_control)))
 
     print(t_arr2.shape, t_arr1.shape, q_arr.shape)
     q_arr_ctrl =   linear_interp(t_arr2, t_arr1, q_arr)

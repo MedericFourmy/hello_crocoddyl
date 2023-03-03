@@ -10,10 +10,6 @@ find_package(crocoddyl REQUIRED)
 
 add_executable(main_reaching src/main_reaching.cpp)
 
-target_include_directories(main_reaching PUBLIC
-  include
-)
-
 target_link_libraries(main_reaching 
     Eigen3::Eigen
     pinocchio::pinocchio pinocchio::pinocchio_headers

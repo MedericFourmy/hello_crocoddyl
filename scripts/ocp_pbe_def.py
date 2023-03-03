@@ -9,7 +9,7 @@ def tanh_interpolation(x, low, high, scale, shift=0):
     x_norm = linear_interpolation(x, 0, len(x), scale*(-1 - shift), scale*(1 - shift))
     return low + 0.5*high*(np.tanh(x_norm)+1)
 
-def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goal_is_se3=True, verbose=False):
+def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, T, dt, goal_is_se3=True, verbose=False):
     # # # # # # # # # # # # # # #
     ###  SETUP CROCODDYL OCP  ###
     # # # # # # # # # # # # # # #
@@ -69,16 +69,16 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, N_nodes, dt, goa
 
 
 
-    # w_frame_schedule = linear_interpolation(np.arange(N_nodes), 0, N_nodes-1, w_running_frame_low, w_running_frame_high)
-    w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_running_frame_low, w_running_frame_high, scale=5, shift=0.0)
-    # w_frame_schedule = tanh_interpolation(np.arange(N_nodes), w_running_frame_low, w_running_frame_high, scale=8, shift=0.0)
+    # w_frame_schedule = linear_interpolation(np.arange(T), 0, T-1, w_running_frame_low, w_running_frame_high)
+    w_frame_schedule = tanh_interpolation(np.arange(T), w_running_frame_low, w_running_frame_high, scale=5, shift=0.0)
+    # w_frame_schedule = tanh_interpolation(np.arange(T), w_running_frame_low, w_running_frame_high, scale=8, shift=0.0)
 
 
     ###############
     # Running costs
     goal_cost_name = 'placement' if goal_is_se3 else 'translation'
     runningModel_lst = []
-    for i in range(N_nodes):
+    for i in range(T):
         runningCostModel = crocoddyl.CostModelSum(state)
 
         # State regularization cost: r(x_i, u_i) = diff(x_i, x_ref)
