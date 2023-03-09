@@ -2,7 +2,7 @@
 import time
 import numpy as np
 import pinocchio as pin
-# from bench_croco import MPCBenchmark
+import config_panda as conf 
 
 np.set_printoptions(precision=4, linewidth=180)
 
@@ -12,12 +12,10 @@ VIEW = True
 PLOT = True
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
-urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_nohand.urdf"
-package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
-robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
 
-# delta_trans = np.array([0.2, 0.0, -0.0])
-delta_trans = np.array([0.5, 0.4, -0.0])
+delta_trans = np.array([0.2, 0.0, -0.0])
+# delta_trans = np.array([0.5, 0.4, -0.0])
 # -0.5, 0.6
 
 # Number of shooting nodes
@@ -28,23 +26,23 @@ dt_ddp = 1e-2  # seconds
 dt_ddp_solve = 1e-2  # seconds
 
 # Simulation
-N_sim = 3000
-dt_sim = 1e-3
+N_sim = 5000
+dt_sim = 1/240  # pybullet
+# dt_sim = 1e-3
 
 # franka_control/config/start_pose.yaml
-q0 = np.array([0, -0.785398163397, 0, -2.35619449019, 0, 1.57079632679, 0.785398163397])
+q0 = conf.q0
 v0 = np.zeros(7)
 x0 = np.concatenate([q0, v0])
 
-ee_frame_name = "panda_link8"
-ee_fid = robot.model.getFrameId(ee_frame_name)
+ee_fid = robot.model.getFrameId(conf.ee_name)
 oMe_0 = robot.framePlacement(q0, ee_fid, True)
 oMe_goal = oMe_0.copy()
 oMe_goal.translation += delta_trans
 oMe_goal.rotation = np.eye(3)
 print(oMe_0)
 
-ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt_ddp, goal_is_se3=False, verbose=False)
+ddp = create_ocp_reaching_pbe(robot.model, x0, conf.ee_name, oMe_goal, T, dt_ddp, goal_is_se3=False, verbose=False)
 
 
 # Warm start : initial state + gravity compensation
@@ -54,6 +52,9 @@ us_init = ddp.problem.quasiStatic(xs_init[:-1])
 success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 
 qk_sim, vk_sim = q0, v0
+
+# Simulation
+
 
 # Logs
 t_solve = []

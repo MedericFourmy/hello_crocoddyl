@@ -10,12 +10,12 @@ Directly inspired by https://github.com/skleff1994/minimal_examples_crocoddyl/bl
 """
 
 import numpy as np
-import pinocchio as pin
-
 np.set_printoptions(precision=4, linewidth=180)
+import pinocchio as pin
 import ocp_utils
-from bench_croco import MPCBenchmark
 
+import config_panda as conf 
+from bench_croco import MPCBenchmark
 from ocp_pbe_def import create_ocp_reaching_pbe
 
 GOAL_IS_SE3 = False
@@ -29,9 +29,7 @@ LABEL = 'slow'
 
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
-urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_nohand.urdf"
-package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
-robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
 
 delta_trans = np.array([-0.31, -0.5, -0.0])
 
@@ -39,19 +37,13 @@ delta_trans = np.array([-0.31, -0.5, -0.0])
 T = 200
 dt_ocp = 1e-2  # seconds
 
-# franka_control/config/start_pose.yaml
-q0 = np.array([0, -0.785398163397, 0, -2.35619449019, 0, 1.57079632679, 0.785398163397])
-v0 = np.zeros(7)
-x0 = np.concatenate([q0, v0])
-
-ee_frame_name = "panda_link8"
-oMe_0 = robot.framePlacement(q0, robot.model.getFrameId(ee_frame_name), update_kinematics=True)
+oMe_0 = robot.framePlacement(conf.q0, robot.model.getFrameId(conf.ee_name), update_kinematics=True)
 oMe_goal = oMe_0.copy()
 oMe_goal.translation += delta_trans
 oMe_goal.rotation = np.eye(3)
 print(oMe_0)
 
-ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt_ocp, goal_is_se3=GOAL_IS_SE3, verbose=VERBOSE)
+ddp = create_ocp_reaching_pbe(robot.model, conf.x0, conf.ee_name, oMe_goal, T, dt_ocp, goal_is_se3=GOAL_IS_SE3, verbose=VERBOSE)
 # ddp.th_stop = 1e-15
 
 
@@ -59,11 +51,11 @@ bench = MPCBenchmark()
 bench.start_croco_profiler()
 
 # Warm start : initial state + gravity compensation
-xs_init = [x0 for i in range(T + 1)]
+xs_init = [conf.x0 for i in range(T + 1)]
 # TODO: check same as 
 us_init = ddp.problem.quasiStatic(xs_init[:-1])
 us_init_bis = np.array(
-    [robot.gravity(q0)]
+    [robot.gravity(conf.q0)]
 )
 ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 
@@ -73,20 +65,20 @@ bench.record_profiles()
 # bench.plot_profiles()
 
 # Extract DDP data and plot
-ddp_data = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
+ddp_data = ocp_utils.extract_ocp_data(ddp, conf.ee_name)
 
 #  Warm start using exactly the previous solution
-ddp.problem.x0 = x0
+ddp.problem.x0 = conf.x0
 xs_init = ddp.xs
 us_init = ddp.us 
 ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
-ddp_data = ocp_utils.extract_ocp_data(ddp, ee_frame_name=ee_frame_name)
+ddp_data = ocp_utils.extract_ocp_data(ddp, conf.ee_name)
 
 # solution joint trajectory
 xs = np.array(ddp.xs)
 q_final = xs[-1, : robot.model.nq]
 oMe_fin = robot.framePlacement(
-    q_final, robot.model.getFrameId(ee_frame_name), update_kinematics=True
+    q_final, robot.model.getFrameId(conf.ee_name), update_kinematics=True
 )
 
 if SAVE:

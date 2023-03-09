@@ -1,20 +1,17 @@
-
-import numpy as np
-import pinocchio as pin
-# np.set_printoptions(precision=4, linewidth=180)
-import ocp_utils
 import time
 import matplotlib.pyplot as plt
+import numpy as np
+np.set_printoptions(precision=4, linewidth=180)
+import pinocchio as pin
 
-from ocp_pbe_def import create_ocp_reaching_pbe
+import config_panda as conf 
 from bench_croco import MPCBenchmark
+from ocp_pbe_def import create_ocp_reaching_pbe
 
 
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
-urdf_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/config/panda_inertias_nohand.urdf"
-package_dirs = ["/home/mfourmy/catkin_ws/src/franka_ros/"]
-robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
 
 # Number of shooting nodes
 T = 100
@@ -25,8 +22,7 @@ q0 = np.array([0, -0.785398163397, 0, -2.35619449019, 0, 1.57079632679, 0.785398
 v0 = np.zeros(7)
 x0 = np.concatenate([q0, v0])
 
-ee_frame_name = 'panda_link8'
-oMe_0 = robot.framePlacement(q0, robot.model.getFrameId(ee_frame_name), update_kinematics=True)
+oMe_0 = robot.framePlacement(q0, robot.model.getFrameId(conf.ee_name), update_kinematics=True)
 
 N_SOLVE = 5
 
@@ -63,7 +59,7 @@ for i, dx in enumerate(dx_vals):
         oMe_goal.translation += delta_trans
         oMe_goal.rotation = np.eye(3)
         # TODO: change ref instead of creating new one
-        ddp = create_ocp_reaching_pbe(robot.model, x0, ee_frame_name, oMe_goal, T, dt, goal_is_se3=False, verbose=False)
+        ddp = create_ocp_reaching_pbe(robot.model, x0, conf.ee_name, oMe_goal, T, dt, goal_is_se3=False, verbose=False)
 
         # Solve and measure timings
         bench.reset_profiles()

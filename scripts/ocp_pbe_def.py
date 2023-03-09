@@ -10,7 +10,7 @@ def tanh_interpolation(x, low, high, scale, shift=0):
     x_norm = linear_interpolation(x, 0, len(x), scale*(-1 - shift), scale*(1 - shift))
     return low + 0.5*high*(np.tanh(x_norm)+1)
 
-def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, T, dt, goal_is_se3=True, verbose=False):
+def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=True, verbose=False):
     # # # # # # # # # # # # # # #
     ###  SETUP CROCODDYL OCP  ###
     # # # # # # # # # # # # # # #
@@ -29,7 +29,7 @@ def create_ocp_reaching_pbe(model, x0, ee_frame_name, oMe_goal, T, dt, goal_is_s
     Default activation function is quadratic
     """
 
-    ee_frame_id = model.getFrameId(ee_frame_name)
+    ee_frame_id = model.getFrameId(ee_name)
 
     # State and actuation model
     state = crocoddyl.StateMultibody(model)
