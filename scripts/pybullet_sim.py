@@ -6,8 +6,7 @@ import pybullet_data
 
 class PybulletSim:
 
-    def __init__(self, dt_sim, urdf_path, package_dirs, joint_names, base_pose=[0,0,0, 0,0,0,1]):
-
+    def __init__(self, dt_sim, urdf_path, package_dirs, joint_names, base_pose=[0, 0, 0, 0, 0, 0, 1], visual=True):
         """Initializes the wrapper.
 
         Simplified version of
@@ -17,24 +16,25 @@ class PybulletSim:
         According to doc, default simulation timestep is 1/240 and should be kept as is (see pb.setTimeStep method doc).
         """
 
-        self.physicsClient = pb.connect(pb.GUI)
-        # physicsClient = pb.connect(pb.DIRECT)  #or pb.DIRECT for non-graphical version
+        # Pinocchio model
+        self.robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+        self.nq = self.robot.nq
+        self.nv = self.robot.nv
+        self.nj = len(joint_names)
+        self.pinocchio_robot = self.robot
+        self.tau_fext = np.zeros(self.robot.nv)
+
+        # Pybullet setup
+        self.physicsClient = pb.connect(pb.GUI if visual else pb.DIRECT)
         pb.setTimeStep(dt_sim)
-        pb.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
+        pb.setAdditionalSearchPath(pybullet_data.getDataPath())  # optionally
         planeId = pb.loadURDF("plane.urdf")
         robot_id = pb.loadURDF(urdf_path, base_pose[:3], base_pose[3:])
-
-        robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
-        pb.setGravity(*robot.model.gravity.linear)
-
-        self.nq = robot.nq
-        self.nv = robot.nv
-        self.nj = len(joint_names)
         self.robot_id = robot_id
-        self.pinocchio_robot = robot
+        pb.setGravity(*self.robot.model.gravity.linear)
 
+        # Mapping between both models
         self.joint_names = joint_names
-
         bullet_joint_map = {}
         for ji in range(pb.getNumJoints(robot_id)):
             bullet_joint_map[
@@ -45,7 +45,7 @@ class PybulletSim:
             [bullet_joint_map[name] for name in joint_names]
         )
         self.pinocchio_joint_ids = np.array(
-            [robot.model.getJointId(name) for name in joint_names]
+            [self.robot.model.getJointId(name) for name in joint_names]
         )
 
         self.pin2bullet_joint_only_array = []
@@ -80,33 +80,11 @@ class PybulletSim:
             q[self.pinocchio_joint_ids[i] - 1] = joint_states[i][0]
             dq[self.pinocchio_joint_ids[i] - 1] = joint_states[i][1]
 
-        return q, dq
+        # ddq??
+        return q, dq, np.zeros(self.robot.nv)
 
-    def update_pinocchio(self, q, dq):
-        """Updates the pinocchio robot.
-        This includes updating:
-        - kinematics
-        - joint and frame jacobian
-        - centroidal momentum
-        Args:
-          q: Pinocchio generalized position vector.
-          dq: Pinocchio generalize velocity vector.
-        """
-        self.pinocchio_robot.computeJointJacobians(q)
-        self.pinocchio_robot.framesForwardKinematics(q)
-        self.pinocchio_robot.centroidalMomentum(q, dq)
-
-    def get_state_update_pinocchio(self):
-        """Get state from pybullet and update pinocchio robot internals.
-        This gets the state from the pybullet simulator and forwards
-        the kinematics, jacobians, centroidal moments on the pinocchio robot
-        (see forward_pinocchio for details on computed quantities)."""
-        q, dq = self.get_state()
-        self.update_pinocchio(q, dq)
-        return q, dq
-
-    def reset_state(self, q, dq):
-        """Reset the robot to the desired states.
+    def set_state(self, q, dq):
+        """Set the robot to the desired states.
         Args:
             q (ndarray): Desired generalized positions.
             dq (ndarray): Desired generalized velocities.
@@ -120,6 +98,17 @@ class PybulletSim:
                 dq[self.pinocchio_joint_ids[i] - 1],
             )
 
+    def apply_external_force(self, f, ee_frame, rf_frame=pin.LOCAL_WORLD_ALIGNED):
+        # Store the torque due to exterior forces for simulation step
+
+        q = self.get_state()[0]
+        self.robot.framesForwardKinematics(q)
+        self.robot.computeJointJacobians(q)
+        pin.updateFramePlacements(self.robot.model, self.robot.data)
+        Jf = pin.getFrameJacobian(
+            self.robot.model, self.robot.data, self.robot.model.getFrameId(ee_frame), rf_frame)
+        self.tau_fext = Jf.T @ f
+
     def send_joint_command(self, tau):
         """Apply the desired torques to the joints.
         Args:
@@ -127,6 +116,9 @@ class PybulletSim:
         """
         # TODO: Apply the torques on the base towards the simulator as well.
         assert tau.shape[0] == self.nv
+
+        # Add the torque due to the external force here
+        tau += self.tau_fext
 
         zeroGains = tau.shape[0] * (0.0,)
 
@@ -143,6 +135,8 @@ class PybulletSim:
         """Step the simulation forward."""
         pb.stepSimulation()
 
+        # reset external force automatically after each simulation step
+        self.tau_fext = np.zeros(self.nv)
 
 
 if __name__ == '__main__':
@@ -150,43 +144,55 @@ if __name__ == '__main__':
     import pinocchio as pin
     import config_panda as conf
 
+    dur_sim = 10.0
+
     # Gains are tuned at max before instability for each dt
-    # dt_sim = 1./240
+    dt_sim = 1./240
+    Kp = 200
+    Kd = 2
+
+    # dt_sim = 1./1000
     # Kp = 200
-    # Kd = 2
-    
-    dt_sim = 1./1000
-    Kp = 1000
-    Kd = 9
+    # # Kd = 5
+    # Kd = 2*np.sqrt(Kp)
+
+    N_sim = int(dur_sim/dt_sim)
 
     robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
 
-    sim = PybulletSim(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
-    sim.reset_state(conf.q0, conf.v0)
+    sim = PybulletSim(dt_sim, conf.urdf_path, conf.package_dirs,
+                      conf.joint_names, visual=True)
+    sim.set_state(conf.q0, conf.v0)
 
     print('conf.q0')
     print(conf.q0)
-    for i in range (50000):
+    for i in range(N_sim):
+        ts = i*dt_sim
         t1 = time.time()
         q, v = sim.get_state()
-        
-        # Gravity compensation feedforward
-        # tau_ff = robot.gravity(q)
-        # Gravity compensation + coriolis
-        tau_ff = pin.rnea(robot.model, robot.data, q, v, np.zeros(7))
 
         # Pure feedforward
-        # tau = tau_ff
+        # tau = tau_ffs
         # PD
-        tau = - Kp*(q - conf.q0) - Kd*(v - conf.v0)
+        # tau = - Kp*(q - conf.q0) - Kd*(v - conf.v0)
         # PD+
         # tau = tau_ff - Kp*(q - conf.q0) - Kd*(v - conf.v0)
-        
+
+        # Joint Space Inverse Dynamics
+        qd = - Kp*(q - conf.q0) - Kd*(v - conf.v0)
+        tau = pin.rnea(robot.model, robot.data, q, v, qd)
+        if 2.0 < ts < 3.0:
+            fext = np.array([0, 100, 0, 0, 0, 0])
+            # fext = np.array([0,0,0, 0,-6,0])
+            sim.apply_external_force(
+                fext, "panda_link4", rf_frame=pin.LOCAL_WORLD_ALIGNED)
+
         sim.send_joint_command(tau)
         sim.step_simulation()
-    
+
         delay = time.time() - t1
         if delay < dt_sim:
             # print(delay)
             time.sleep(dt_sim - delay)
+
     pb.disconnect()

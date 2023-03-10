@@ -4,14 +4,15 @@ import numpy as np
 import pinocchio as pin
 import config_panda as conf 
 
+# from pinocchio_sim import PinocchioSim as Simulator
+from pybullet_sim import PybulletSim as Simulator
+
 np.set_printoptions(precision=4, linewidth=180)
 
 from ocp_pbe_def import create_ocp_reaching_pbe
 
 GVIEWER = True
 PLOT = True
-USE_PYBULLET = True
-USE_PYBULLET_GUI = True
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
@@ -27,12 +28,12 @@ N_sim = 5000
 dt_sim = 1e-3
 
 # Number of shooting nodes
-T = 100
+T = 500
 # shooting nodes integration dt
 dt_ddp = 1e-3  # seconds
 # Solve every...
-dt_ddp_solve = 1e-3  # seconds
-PRINT_EVERY = 500
+dt_ddp_solve = 1e-2  # seconds
+PRINT_EVERY = 100
 SOLVE_EVERY = int(dt_ddp_solve/dt_sim)
 
 
@@ -60,12 +61,13 @@ success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 qk_sim, vk_sim = q0, v0
 
 # Simulation
-if USE_PYBULLET:
-    from pybullet_sim import PybulletSim
+sim = Simulator(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
+sim.set_state(conf.q0, conf.v0)
 
-    sim = PybulletSim(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
-    sim.reset_state(conf.q0, conf.v0)
-
+# Force disturbance
+t1_dist, t2_dist = 1.0, 2.0
+fext = np.array([0,40,0, 0,0,0])
+frame_dist = "panda_link4"
 
 
 # Logs
@@ -103,23 +105,11 @@ for k in range(N_sim):
     u_ref_mpc = ddp.us[0]
     # print(u_ref_mpc)
 
-    if USE_PYBULLET:
-        sim.send_joint_command(u_ref_mpc)
-        sim.step_simulation()
-        qk_sim, vk_sim = sim.get_state()
-        dvk_sim = np.zeros(7)  #? pb.getJointaccl??
-
-    else:
-        # using current torque cmd, compute simulation acceleration 
-        dvk_sim = pin.aba(robot.model, robot.data, qk_sim, vk_sim, u_ref_mpc)
-
-        # simulation step: integrate the current acceleration 
-        # vk_sim += dvk_sim*dt_sim
-        # qk_sim += vk_sim*dt_sim
-
-        v_mean = vk_sim + 0.5*dvk_sim*dt_sim
-        vk_sim += dvk_sim*dt_sim
-        qk_sim = pin.integrate(robot.model, qk_sim, v_mean*dt_sim)
+    if t1_dist < tk < t2_dist:
+        sim.apply_external_force(fext, frame_dist, rf_frame=pin.LOCAL_WORLD_ALIGNED)
+    sim.send_joint_command(u_ref_mpc)
+    sim.step_simulation()
+    qk_sim, vk_sim, dvk_sim = sim.get_state()
 
     # Logs
     t_sim_arr[k] = tk
@@ -193,7 +183,7 @@ if PLOT:
     # Controls
     fig, axes = plt.subplots(7,1)
     fig.canvas.manager.set_window_title('joint_torques')
-    fig.suptitle('Joint torques', size=18)
+    fig.suptitle('Joint torques', size=12)
     for i in range(7):
         axes[i].plot(t_sim_arr, u_ref_arr[:,i])
     axes[-1].set_xlabel('Time (s)', fontsize=16)
@@ -201,9 +191,9 @@ if PLOT:
     # Solve time
     fig, axes = plt.subplots(2,1)
     fig.canvas.manager.set_window_title('solve_times')
-    axes[0].set_title('Solve times (ms)', size=18)
+    axes[0].set_title('Solve times (ms)', size=12)
     axes[0].plot(t_solve, dt_solve)
-    axes[0].set_title('# iterations', size=18)
+    axes[1].set_title('# iterations', size=12)
     axes[1].plot(t_solve, nb_iter_solve)
     axes[1].set_xlabel('Time (s)', fontsize=16)
 
