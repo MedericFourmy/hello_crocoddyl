@@ -1,30 +1,37 @@
 import numpy as np
+import pinocchio as pin
 import pybullet as pb
-
-"""
-Simplified version of
-https://github.com/machines-in-motion/bullet_utils/blob/main/src/bullet_utils/wrapper.py
-assuming a fixed base.
-
-According to doc, default simulation timestep is 1/240 and should be kept as is (see pb.setTimeStep method doc).
-"""
+import pybullet_data
 
 
 class PybulletSim:
 
-    def __init__(self, robot_id, pinocchio_robot, joint_names):
+    def __init__(self, dt_sim, urdf_path, package_dirs, joint_names, base_pose=[0,0,0, 0,0,0,1]):
+
         """Initializes the wrapper.
-        Args:
-            robot_id (int): PyBullet id of the robot.
-            pinocchio_robot (:obj:'Pinocchio.RobotWrapper'): Pinocchio RobotWrapper for the robot.
-            joint_names (:obj:`list` of :obj:`str`): Names of the joints.
-            useFixedBase (bool, optional): Determines if the robot base if fixed.. Defaults to False.
+
+        Simplified version of
+        https://github.com/machines-in-motion/bullet_utils/blob/main/src/bullet_utils/wrapper.py
+        assuming a fixed base.
+
+        According to doc, default simulation timestep is 1/240 and should be kept as is (see pb.setTimeStep method doc).
         """
-        self.nq = pinocchio_robot.nq
-        self.nv = pinocchio_robot.nv
+
+        self.physicsClient = pb.connect(pb.GUI)
+        # physicsClient = pb.connect(pb.DIRECT)  #or pb.DIRECT for non-graphical version
+        pb.setTimeStep(dt_sim)
+        pb.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
+        planeId = pb.loadURDF("plane.urdf")
+        robot_id = pb.loadURDF(urdf_path, base_pose[:3], base_pose[3:])
+
+        robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
+        pb.setGravity(*robot.model.gravity.linear)
+
+        self.nq = robot.nq
+        self.nv = robot.nv
         self.nj = len(joint_names)
         self.robot_id = robot_id
-        self.pinocchio_robot = pinocchio_robot
+        self.pinocchio_robot = robot
 
         self.joint_names = joint_names
 
@@ -38,15 +45,8 @@ class PybulletSim:
             [bullet_joint_map[name] for name in joint_names]
         )
         self.pinocchio_joint_ids = np.array(
-            [pinocchio_robot.model.getJointId(name) for name in joint_names]
+            [robot.model.getJointId(name) for name in joint_names]
         )
-
-        print('bullet_joint_map')
-        print(bullet_joint_map)
-        print('self.bullet_joint_ids')
-        print(self.bullet_joint_ids)
-        print('self.pinocchio_joint_ids')
-        print(self.pinocchio_joint_ids)
 
         self.pin2bullet_joint_only_array = []
         # skip the universe joint
@@ -146,41 +146,9 @@ class PybulletSim:
 
 
 if __name__ == '__main__':
-
     import time
-    import pybullet_data
     import pinocchio as pin
     import config_panda as conf
-    physicsClient = pb.connect(pb.GUI)
-    # physicsClient = pb.connect(pb.DIRECT)  #or pb.DIRECT for non-graphical version
-    print(pybullet_data.getDataPath())
-    pb.setAdditionalSearchPath(pybullet_data.getDataPath()) #optionally
-    # pb.setGravity(0,0,-10)
-    planeId = pb.loadURDF("plane.urdf")
-    # startPos = [0,0,1]
-    # startPos = [0,0,1]
-    # startOrientation = pb.getQuaternionFromEuler([0,0,0])
-    print(conf.urdf_path)
-    robot_id = pb.loadURDF(conf.urdf_path, [0,0,1], [0,0,0,1])
-    # robot_id = pb.loadURDF(conf.urdf_path, [0,0,2], [1,0,0,0])
-
-    # Load model (hardcoded for now, eventually should be in example-robot-data)
-    robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
-    pb.setGravity(*robot.model.gravity.linear)
-
-    joint_names = [
-        'panda_joint1',
-        'panda_joint2',
-        'panda_joint3',
-        'panda_joint4',
-        'panda_joint5',
-        'panda_joint6',
-        'panda_joint7',
-    ]
-    pbs = PybulletSim(robot_id, robot, joint_names)
-
-    pbs.reset_state(conf.q0, conf.v0)
-    q, v = conf.q0, conf.v0
 
     # Gains are tuned at max before instability for each dt
     # dt_sim = 1./240
@@ -190,12 +158,17 @@ if __name__ == '__main__':
     dt_sim = 1./1000
     Kp = 1000
     Kd = 9
+
+    robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
+
+    sim = PybulletSim(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
+    sim.reset_state(conf.q0, conf.v0)
+
     print('conf.q0')
     print(conf.q0)
-    pb.setTimeStep(dt_sim)
     for i in range (50000):
         t1 = time.time()
-        q, v = pbs.get_state()
+        q, v = sim.get_state()
         
         # Gravity compensation feedforward
         # tau_ff = robot.gravity(q)
@@ -209,10 +182,11 @@ if __name__ == '__main__':
         # PD+
         # tau = tau_ff - Kp*(q - conf.q0) - Kd*(v - conf.v0)
         
-        pbs.send_joint_command(tau)
-        pb.stepSimulation()
+        sim.send_joint_command(tau)
+        sim.step_simulation()
+    
         delay = time.time() - t1
         if delay < dt_sim:
-            print(delay)
+            # print(delay)
             time.sleep(dt_sim - delay)
     pb.disconnect()

@@ -8,8 +8,10 @@ np.set_printoptions(precision=4, linewidth=180)
 
 from ocp_pbe_def import create_ocp_reaching_pbe
 
-VIEW = True
+GVIEWER = True
 PLOT = True
+USE_PYBULLET = True
+USE_PYBULLET_GUI = True
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
@@ -18,17 +20,21 @@ delta_trans = np.array([0.2, 0.0, -0.0])
 # delta_trans = np.array([0.5, 0.4, -0.0])
 # -0.5, 0.6
 
-# Number of shooting nodes
-T = 100
-# shooting nodes integration dt
-dt_ddp = 1e-2  # seconds
-# Solve every...
-dt_ddp_solve = 1e-2  # seconds
 
 # Simulation
 N_sim = 5000
-dt_sim = 1/240  # pybullet
-# dt_sim = 1e-3
+# dt_sim = 1/240  # pybullet
+dt_sim = 1e-3
+
+# Number of shooting nodes
+T = 100
+# shooting nodes integration dt
+dt_ddp = 1e-3  # seconds
+# Solve every...
+dt_ddp_solve = 1e-3  # seconds
+PRINT_EVERY = 500
+SOLVE_EVERY = int(dt_ddp_solve/dt_sim)
+
 
 # franka_control/config/start_pose.yaml
 q0 = conf.q0
@@ -54,6 +60,12 @@ success = ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 qk_sim, vk_sim = q0, v0
 
 # Simulation
+if USE_PYBULLET:
+    from pybullet_sim import PybulletSim
+
+    sim = PybulletSim(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
+    sim.reset_state(conf.q0, conf.v0)
+
 
 
 # Logs
@@ -70,34 +82,44 @@ for k in range(N_sim):
 
     tk = dt_sim*k 
 
-    if (k % 1000) == 0:
+    if (k % PRINT_EVERY) == 0:
         print(f'{k}/{N_sim}')
 
     #  Warm start using previous solution
-    ddp.problem.x0 = xk_sim
-    xs_init = list(ddp.xs[1:]) + [ddp.xs[-1]]  # shift solution
-    xs_init[0] = xk_sim
-    us_init = list(ddp.us[1:]) + [ddp.us[-1]]
+    if (k % SOLVE_EVERY) == 0:
+        ddp.problem.x0 = xk_sim
+        xs_init = list(ddp.xs[1:]) + [ddp.xs[-1]]  # shift solution
+        xs_init[0] = xk_sim
+        us_init = list(ddp.us[1:]) + [ddp.us[-1]]
 
-    # Solve
-    t1 = time.time()
-    success = ddp.solve(xs_init, us_init, maxiter=3, isFeasible=False)
-    t_solve.append(tk)
-    dt_solve.append(1e3*(time.time() - t1))
-    nb_iter_solve.append(ddp.iter)
+        # Solve
+        t1 = time.time()
+        success = ddp.solve(xs_init, us_init, maxiter=10, isFeasible=False)
+        t_solve.append(tk)
+        dt_solve.append(1e3*(time.time() - t1))  # store milliseconds
+        nb_iter_solve.append(ddp.iter)
     
-
-    # using current torque cmd, compute simulation acceleration 
+    # control to apply
     u_ref_mpc = ddp.us[0]
-    dvk_sim = pin.aba(robot.model, robot.data, qk_sim, vk_sim, u_ref_mpc)
+    # print(u_ref_mpc)
 
-    # simulation step: integrate the current acceleration 
-    # vk_sim += dvk_sim*dt_sim
-    # qk_sim += vk_sim*dt_sim
+    if USE_PYBULLET:
+        sim.send_joint_command(u_ref_mpc)
+        sim.step_simulation()
+        qk_sim, vk_sim = sim.get_state()
+        dvk_sim = np.zeros(7)  #? pb.getJointaccl??
 
-    v_mean = vk_sim + 0.5*dvk_sim*dt_sim
-    vk_sim += dvk_sim*dt_sim
-    qk_sim = pin.integrate(robot.model, qk_sim, v_mean*dt_sim)
+    else:
+        # using current torque cmd, compute simulation acceleration 
+        dvk_sim = pin.aba(robot.model, robot.data, qk_sim, vk_sim, u_ref_mpc)
+
+        # simulation step: integrate the current acceleration 
+        # vk_sim += dvk_sim*dt_sim
+        # qk_sim += vk_sim*dt_sim
+
+        v_mean = vk_sim + 0.5*dvk_sim*dt_sim
+        vk_sim += dvk_sim*dt_sim
+        qk_sim = pin.integrate(robot.model, qk_sim, v_mean*dt_sim)
 
     # Logs
     t_sim_arr[k] = tk
@@ -109,8 +131,8 @@ for k in range(N_sim):
 
 
 
-if VIEW:
-    # setup visualizer (instead of simulator)
+if GVIEWER:
+    # setup visualizer 
     viz = pin.visualize.GepettoVisualizer(robot.model, robot.collision_model, robot.visual_model)
     viz.initViewer(loadModel=True)
 
@@ -128,9 +150,9 @@ if VIEW:
     while k < N_sim:
         t1 = time.time()
         viz.display(q_sim_arr[k,:])
-        delay =  dt_sim - (time.time() - t1)
-        if delay > 0: 
-            time.sleep(delay)
+        delay = time.time() - t1
+        if delay < dt_sim: 
+            time.sleep(dt_sim - delay)
         k += 1
 
 
