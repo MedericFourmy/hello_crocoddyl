@@ -31,7 +31,8 @@ LABEL = 'slow'
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
 
-delta_trans = np.array([-0.31, -0.5, -0.0])
+# delta_trans = np.array([-0.31, -0.5, -0.0])
+delta_trans = np.array([-0.0, -0.0, -0.0])
 
 # Number of shooting nodes
 T = 200

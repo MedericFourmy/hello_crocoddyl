@@ -4,8 +4,9 @@ import numpy as np
 import pinocchio as pin
 import config_panda as conf 
 
-# from pinocchio_sim import PinocchioSim as Simulator
-from pybullet_sim import PybulletSim as Simulator
+from pinocchio_sim import PinocchioSim as Simulator
+# from pybullet_sim import PybulletSim as Simulator
+from gviewer_mpc import GviewerMpc
 
 np.set_printoptions(precision=4, linewidth=180)
 
@@ -17,9 +18,9 @@ PLOT = True
 # Load model (hardcoded for now, eventually should be in example-robot-data)
 robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
 
-delta_trans = np.array([0.2, 0.0, -0.0])
-# delta_trans = np.array([0.5, 0.4, -0.0])
-# -0.5, 0.6
+# delta_trans = np.array([0.0, 0.0, 0.0])
+# delta_trans = np.array([0.0, 0.0, 0.4])
+delta_trans = np.array([0.3, 0.3, -0.0])
 
 
 # Simulation
@@ -28,12 +29,12 @@ N_sim = 5000
 dt_sim = 1e-3
 
 # Number of shooting nodes
-T = 500
+T = 200
 # shooting nodes integration dt
-dt_ddp = 1e-3  # seconds
+dt_ddp = 1e-2  # seconds
 # Solve every...
 dt_ddp_solve = 1e-2  # seconds
-PRINT_EVERY = 100
+PRINT_EVERY = 500
 SOLVE_EVERY = int(dt_ddp_solve/dt_sim)
 
 
@@ -64,9 +65,14 @@ qk_sim, vk_sim = q0, v0
 sim = Simulator(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
 sim.set_state(conf.q0, conf.v0)
 
+# visualization
+gmpc = GviewerMpc(3, conf.q0)
+
 # Force disturbance
 t1_dist, t2_dist = 1.0, 2.0
-fext = np.array([0,40,0, 0,0,0])
+# fext = np.array([0,40,0, 0,0,0])
+# fext = np.array([0,10,0, 0,0,0])
+fext = np.array([0,0,0, 0,0,0])
 frame_dist = "panda_link4"
 
 
@@ -79,6 +85,11 @@ v_sim_arr = np.zeros((N_sim, 7))
 dv_sim_arr = np.zeros((N_sim, 7))
 u_ref_arr = np.zeros((N_sim, 7))
 t_sim_arr = dt_sim*np.arange(N_sim)
+print('\n==========================')
+print('Begin simulation + control')
+print('Apply force between ', t1_dist, t2_dist, ' seconds')
+print('   -> ', t1_dist/dt_sim, t2_dist/dt_sim, ' iterations')
+print('fext: ', fext)
 for k in range(N_sim):
     xk_sim = np.concatenate([qk_sim, vk_sim])
 
@@ -103,10 +114,12 @@ for k in range(N_sim):
     
     # control to apply
     u_ref_mpc = ddp.us[0]
+    gmpc.display_keyframes(np.array(ddp.xs)[:,:7])
     # print(u_ref_mpc)
 
     if t1_dist < tk < t2_dist:
         sim.apply_external_force(fext, frame_dist, rf_frame=pin.LOCAL_WORLD_ALIGNED)
+    
     sim.send_joint_command(u_ref_mpc)
     sim.step_simulation()
     qk_sim, vk_sim, dvk_sim = sim.get_state()
@@ -121,33 +134,37 @@ for k in range(N_sim):
 
 
 
-if GVIEWER:
-    # setup visualizer 
-    viz = pin.visualize.GepettoVisualizer(robot.model, robot.collision_model, robot.visual_model)
-    viz.initViewer(loadModel=True)
+# if GVIEWER:
+#     print('\n=================')
+#     print('Realtime playback')
+#     # setup visualizer 
+#     robot.initViewer(loadModel=True)
 
-    viz.viewer.gui.addSphere("world/target", 0.05, [0, 1, 0, 0.5])
-    viz.viewer.gui.applyConfiguration("world/target", oMe_goal.translation.tolist() + [0, 0, 0, 1])
-    viz.viewer.gui.addSphere("world/final", 0.05, [0, 0, 1, 0.5])
-    # solution joint trajectory
-    xs = np.array(ddp.xs)
-    q_final = xs[-1, : robot.model.nq]
-    oMe_fin = robot.framePlacement(q_final, ee_fid, True)
-    viz.viewer.gui.applyConfiguration("world/final", oMe_fin.translation.tolist() + [0, 0, 0, 1])
+#     gui = robot.viewer.gui
+#     gui.addSphere("world/target", 0.05, [0, 1, 0, 0.5])
+#     gui.applyConfiguration("world/target", oMe_goal.translation.tolist() + [0, 0, 0, 1])
+#     gui.addSphere("world/final", 0.05, [0, 0, 1, 0.5])
+#     # solution joint trajectory
+#     xs = np.array(ddp.xs)
+#     q_final = xs[-1, : robot.model.nq]
+#     oMe_fin = robot.framePlacement(q_final, ee_fid, True)
+#     gui.applyConfiguration("world/final", oMe_fin.translation.tolist() + [0, 0, 0, 1])
 
-    # Viewer loop 
-    k = 0
-    while k < N_sim:
-        t1 = time.time()
-        viz.display(q_sim_arr[k,:])
-        delay = time.time() - t1
-        if delay < dt_sim: 
-            time.sleep(dt_sim - delay)
-        k += 1
+#     # Viewer loop 
+#     k = 0
+#     while k < N_sim:
+#         t1 = time.time()
+#         robot.display(q_sim_arr[k,:])
+#         delay = time.time() - t1
+#         if delay < dt_sim: 
+#             time.sleep(dt_sim - delay)
+#         k += 1
 
 
 
 if PLOT:
+    print('\n=========')
+    print('Plot traj')
     import matplotlib.pyplot as plt
 
     # State

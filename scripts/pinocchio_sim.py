@@ -8,7 +8,9 @@ class PinocchioSim:
 
         self.dt_sim = dt_sim
         self.robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
-        self.robot.initViewer(loadModel=True)
+        self.visual = visual
+        if visual:
+            self.robot.initViewer(loadModel=True)
 
         self.nq = self.robot.nq
         self.nv = self.robot.nv
@@ -59,7 +61,8 @@ class PinocchioSim:
         self.q = pin.integrate(self.robot.model, self.q, v_mean*self.dt_sim)
 
         # update visual
-        self.robot.display(self.q)
+        if self.visual:
+            self.robot.display(self.q)
 
         # reset external force automatically after each simulation step
         self.tau_fext = np.zeros(self.nv)
