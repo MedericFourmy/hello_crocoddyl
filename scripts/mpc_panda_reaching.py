@@ -25,7 +25,7 @@ delta_trans = np.array([0.3, 0.3, -0.0])
 
 # Simulation
 N_sim = 5000
-# dt_sim = 1/240  # pybullet
+# dt_sim = 1/240  # pybullet default
 dt_sim = 1e-3
 
 # Number of shooting nodes
@@ -65,15 +65,15 @@ qk_sim, vk_sim = q0, v0
 sim = Simulator(dt_sim, conf.urdf_path, conf.package_dirs, conf.joint_names)
 sim.set_state(conf.q0, conf.v0)
 
-# visualization
-gmpc = GviewerMpc(3, conf.q0)
+# visualization of mpc preview
+gmpc = GviewerMpc(2, conf.q0)
 
 # Force disturbance
-t1_dist, t2_dist = 1.0, 2.0
-# fext = np.array([0,40,0, 0,0,0])
+t1_fext, t2_fext = 1.0, 2.0
+fext = np.array([0,40,0, 0,0,0])
 # fext = np.array([0,10,0, 0,0,0])
-fext = np.array([0,0,0, 0,0,0])
-frame_dist = "panda_link4"
+# fext = np.array([0,0,0, 0,0,0])
+frame_fext = "panda_link4"
 
 
 # Logs
@@ -87,8 +87,8 @@ u_ref_arr = np.zeros((N_sim, 7))
 t_sim_arr = dt_sim*np.arange(N_sim)
 print('\n==========================')
 print('Begin simulation + control')
-print('Apply force between ', t1_dist, t2_dist, ' seconds')
-print('   -> ', t1_dist/dt_sim, t2_dist/dt_sim, ' iterations')
+print('Apply force between ', t1_fext, t2_fext, ' seconds')
+print('   -> ', t1_fext/dt_sim, t2_fext/dt_sim, ' iterations')
 print('fext: ', fext)
 for k in range(N_sim):
     xk_sim = np.concatenate([qk_sim, vk_sim])
@@ -117,8 +117,8 @@ for k in range(N_sim):
     gmpc.display_keyframes(np.array(ddp.xs)[:,:7])
     # print(u_ref_mpc)
 
-    if t1_dist < tk < t2_dist:
-        sim.apply_external_force(fext, frame_dist, rf_frame=pin.LOCAL_WORLD_ALIGNED)
+    if t1_fext < tk < t2_fext:
+        sim.apply_external_force(fext, frame_fext, rf_frame=pin.LOCAL_WORLD_ALIGNED)
     
     sim.send_joint_command(u_ref_mpc)
     sim.step_simulation()
