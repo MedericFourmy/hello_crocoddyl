@@ -1,5 +1,5 @@
 import numpy as np
-import pinocchio as pin
+# import pinocchio as pin
 import crocoddyl
 
 
@@ -28,6 +28,7 @@ def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=Tru
 
     Default activation function is quadratic
     """
+    model = model.copy()
 
     ee_frame_id = model.getFrameId(ee_name)
 
@@ -113,7 +114,7 @@ def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=Tru
         # Create Integrated Action Model (IAM), i.e. Euler integration of continuous dynamics and cost
         runningModel = crocoddyl.IntegratedActionModelEuler(running_DAM, dt)
         # Optionally add armature to take into account actuator's inertia
-        runningModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+        # runningModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
         runningModel_lst.append(runningModel)
     

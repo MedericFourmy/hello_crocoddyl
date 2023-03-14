@@ -60,10 +60,9 @@ class PinocchioSim:
         self.ddq = pin.aba(self.robot.model, self.robot.data,
                            self.q, self.dq, tau)
 
-        # RK2 'midpoint' integration
-        v_mean = self.dq + 0.5*self.ddq*self.dt_sim
-        self.dq += self.ddq*self.dt_sim
-        self.q = pin.integrate(self.robot.model, self.q, v_mean*self.dt_sim)
+        # Exact integration for this simple linear system x=(q,dq), u=(ddq)
+        self.q = self.q + self.dq*self.dt_sim + 0.5*self.ddq*self.dt_sim**2
+        self.dq = self.dq + self.ddq*self.dt_sim
 
         # update visuals
         if self.visual:
