@@ -1,10 +1,11 @@
 import numpy as np
 import pinocchio as pin
+from functools import partial
 
 
 class PinocchioSim:
 
-    def __init__(self, dt_sim, urdf_path, package_dirs, joint_names, base_pose=[0, 0, 0, 0, 0, 0, 1], visual=True):
+    def __init__(self, dt_sim, urdf_path, package_dirs, joint_names=None, base_pose=[0, 0, 0, 0, 0, 0, 1], visual=True):
 
         self.dt_sim = dt_sim
         self.robot = pin.RobotWrapper.BuildFromURDF(urdf_path, package_dirs)
@@ -20,12 +21,16 @@ class PinocchioSim:
         self.tau_cmd = np.zeros(self.robot.nv)
         self.tau_fext = np.zeros(self.robot.nv)
 
+        self.pin_integrate = partial(pin.integrate, self.robot.model)
+
     def get_state(self):
-        return self.q, self.dq, self.ddq
+        # Make a explicit copies to avoid silly blinders
+        return self.q.copy(), self.dq.copy(), self.ddq.copy()
 
     def set_state(self, q, dq, ddq=None):
-        self.q = q
-        self.dq = dq
+        # Make a explicit copies to avoid silly blinders
+        self.q = q.copy()
+        self.dq = dq.copy()
         if ddq is None:
             self.ddq = np.zeros(self.nv)
 
@@ -51,16 +56,16 @@ class PinocchioSim:
         """Step the simulation forward."""
 
         # Free foward dynamics algorithm
-        tau_ext = self.tau_cmd + self.tau_fext
+        tau = self.tau_cmd + self.tau_fext
         self.ddq = pin.aba(self.robot.model, self.robot.data,
-                           self.q, self.dq, tau_ext)
+                           self.q, self.dq, tau)
 
-        # Integration step
+        # RK2 'midpoint' integration
         v_mean = self.dq + 0.5*self.ddq*self.dt_sim
         self.dq += self.ddq*self.dt_sim
         self.q = pin.integrate(self.robot.model, self.q, v_mean*self.dt_sim)
 
-        # update visual
+        # update visuals
         if self.visual:
             self.robot.display(self.q)
 
@@ -68,55 +73,7 @@ class PinocchioSim:
         self.tau_fext = np.zeros(self.nv)
 
 
+
 if __name__ == '__main__':
-    import time
-    import config_panda as conf
-
-    dur_sim = 10.0
-
-    # Gains are tuned at max before instability for each dt
-    # dt_sim = 1./240
-    # Kp = 200
-    # # Kd = 2
-    # Kd = 2*np.sqrt(Kp)
-
-    dt_sim = 1./1000
-    Kp = 200
-    # Kd = 5
-    Kd = 2*np.sqrt(Kp)
-
-    N_sim = int(dur_sim/dt_sim)
-
-    robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
-
-    sim = PinocchioSim(dt_sim, conf.urdf_path,
-                       conf.package_dirs, conf.joint_names, visual=True)
-    sim.set_state(conf.q0, conf.v0)
-
-    for i in range(N_sim):
-        ts = i*dt_sim
-        t1 = time.time()
-        q, v = sim.get_state()
-
-        # Pure feedforward
-        # tau = tau_ffs
-        # PD
-        # tau = - Kp*(q - conf.q0) - Kd*(v - conf.v0)
-        # PD+
-        # tau = tau_ff - Kp*(q - conf.q0) - Kd*(v - conf.v0)
-
-        # Joint Space Inverse Dynamics
-        qd = - Kp*(q - conf.q0) - Kd*(v - conf.v0)
-        tau = pin.rnea(robot.model, robot.data, q, v, qd)
-        if 2.0 < ts < 3.0:
-            fext = np.array([0, 20, 0, 0, 0, 0])
-            sim.apply_external_force(
-                fext, "panda_link4", rf_frame=pin.LOCAL_WORLD_ALIGNED)
-
-        sim.send_joint_command(tau)
-        sim.step_simulation()
-
-        delay = time.time() - t1
-        if delay < dt_sim:
-            # print(delay)
-            time.sleep(dt_sim - delay)
+    from utils import test_run_simulator
+    test_run_simulator(PinocchioSim)
