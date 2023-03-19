@@ -29,13 +29,15 @@ LABEL = 'slow'
 
 
 # Load model (hardcoded for now, eventually should be in example-robot-data)
-robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
+# robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
+from example_robot_data import load
+robot = load('panda')
 
-# delta_trans = np.array([-0.31, -0.5, -0.0])
-delta_trans = np.array([-0.0, -0.0, -0.0])
+delta_trans = np.array([-0.31, -0.3, -0.0])
+# delta_trans = np.array([-0.0, -0.0, -0.0])
 
 # Number of shooting nodes
-T = 200
+T = 50
 dt_ocp = 1e-2  # seconds
 
 oMe_0 = robot.framePlacement(conf.q0, robot.model.getFrameId(conf.ee_name), update_kinematics=True)

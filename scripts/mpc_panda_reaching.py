@@ -4,8 +4,8 @@ import numpy as np
 import pinocchio as pin
 import config_panda as conf 
 
-from pinocchio_sim import PinocchioSim as Simulator
-# from pybullet_sim import PybulletSim as Simulator
+from unified_simulators.pinocchio_sim import PinocchioSim as Simulator
+# from unified_simulators.pybullet_sim import PybulletSim as Simulator
 from gviewer_mpc import GviewerMpc
 
 np.set_printoptions(precision=4, linewidth=180)

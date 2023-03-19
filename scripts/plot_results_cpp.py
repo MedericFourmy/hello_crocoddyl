@@ -2,11 +2,11 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-
-df_T = pd.read_csv('../build/tsid_out_T.csv')
-df_q = pd.read_csv('../build/tsid_out_q.csv')
-df_tau = pd.read_csv('../build/tsid_out_tau.csv')
-df_v = pd.read_csv('../build/tsid_out_v.csv')
+BUILD_DIR = 'build_multi'
+df_T = pd.read_csv(f'../{BUILD_DIR}/T.csv')
+df_q = pd.read_csv(f'../{BUILD_DIR}/q.csv')
+df_tau = pd.read_csv(f'../{BUILD_DIR}/tau.csv')
+df_v = pd.read_csv(f'../{BUILD_DIR}/v.csv')
 
 t_arr = np.arange(len(df_q))*1e-3
 

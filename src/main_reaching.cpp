@@ -1,21 +1,31 @@
+#include <iostream>
+#include <fstream>
+#include "yaml-cpp/yaml.h"
+
 #include <pinocchio/parsers/urdf.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 
-#include <iostream>
-#include <fstream>
-
 #include "crocoddyl_reaching.h"
+#include "utils.h"
 
 namespace pin = pinocchio;
 
 int main()
 {
+    YAML::Node node = YAML::LoadFile("../config/config.yaml");
+    uint16_t T = node["T"].as<uint16_t>();
+    double dt_ocp = node["dt_ocp"].as<double>();
+    bool ws_is_feasible = node["ws_is_feasible"].as<bool>();
+
+    std::cout << "T: " << T << std::endl;
+    std::cout << "dt_ocp: " << dt_ocp << std::endl;
+    std::cout << std::endl;
 
     std::string ee_frame_pin = "panda_link8";
 
     pin::Model model_pin;
-    std::string model_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/res/panda_inertias.urdf";
-    // std::string model_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/res/panda_inertias_nohand.urdf";
+    // std::string model_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/res/panda_inertias.urdf";
+    std::string model_path = "/home/mfourmy/catkin_ws/src/panda_torque_mpc/res/panda_inertias_nohand.urdf";
     pin::urdf::buildModel(model_path, model_pin);
     pin::Data data_pin(model_pin);
 
@@ -23,8 +33,8 @@ int main()
     Eigen::Vector3d delta_trans;
     delta_trans << -0.3, -0.3, -0.0;
     // Number of shooting nodes (minus terminal one)
-    config.T = 200;
-    config.dt_ocp = 1e-2;
+    config.T = T;
+    config.dt_ocp = dt_ocp;
 
     // franka_control/config/start_pose.yaml
     Eigen::Matrix<double, 7, 1> q0;
@@ -59,14 +69,20 @@ int main()
     xs_init.push_back(x0);
 
     std::cout << "ddp problem initialized " << std::endl;
+    TicTac tic;
+    tic.tic();
     croco_pbe.ddp_->solve(xs_init, us_init, 100, false);
     std::cout << "ddp problem solved, nb iterations: " << croco_pbe.ddp_->get_iter() << std::endl;
+    tic.print_tac("Initial solve took (ms): ");
 
     std::vector<Eigen::Matrix<double, -1, 1>> xs = croco_pbe.ddp_->get_xs();
     std::vector<Eigen::Matrix<double, -1, 1>> us = croco_pbe.ddp_->get_us();
 
-    croco_pbe.ddp_->solve(xs, us, 100, false);
+    TicTac tic_ws;
+    tic_ws.tic();
+    croco_pbe.ddp_->solve(xs, us, 100, ws_is_feasible);
     std::cout << "ddp problem solved with WS, nb iterations: " << croco_pbe.ddp_->get_iter() << std::endl;
+    tic_ws.print_tac("Warm started solve took (ms): ");
 
     // Record results
 
@@ -74,10 +90,10 @@ int main()
     std::ofstream file_v;
     std::ofstream file_tau;
     std::ofstream file_T;
-    file_q.open("tsid_out_q.csv");
-    file_v.open("tsid_out_v.csv");
-    file_tau.open("tsid_out_tau.csv");
-    file_T.open("tsid_out_T.csv");
+    file_q.open("q.csv");
+    file_v.open("v.csv");
+    file_tau.open("tau.csv");
+    file_T.open("T.csv");
 
     file_q << "q0,q1,q2,q3,q4,q5,q6"
            << "\n";
