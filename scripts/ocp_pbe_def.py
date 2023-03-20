@@ -53,7 +53,7 @@ def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=Tru
     # Task weigths
     ##############
     # EE pose
-    w_running_frame_low = 20
+    w_running_frame_low = 100
     w_running_frame_high = 100
     w_frame_terminal = 1000.0
 
@@ -65,8 +65,8 @@ def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=Tru
     # )
     
     # State regularization
-    w_x_reg_running = 0.1
-    # w_x_reg_running = 1.0
+    # w_x_reg_running = 0.1
+    w_x_reg_running = 1.0
     diag_x_reg_running = np.array(
         7*[0.1] + 7*[1.0]
     )
