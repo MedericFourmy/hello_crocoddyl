@@ -2,12 +2,11 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 np.set_printoptions(precision=4, linewidth=180)
-import pinocchio as pin
 from example_robot_data import load
 
 from bench_croco import MPCBenchmark
 from ocp_pbe_def import create_ocp_reaching_pbe
-import utils
+from unified_simulators.utils import freezed_robot
 
 
 robot_name = 'panda'
@@ -15,7 +14,7 @@ robot = load(robot_name)
 ee_name = 'panda_link8'
 fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
 # fixed_joints = None
-robot = utils.freezed_robot(robot, fixed_joints)
+robot = freezed_robot(robot, fixed_joints)
 
 # Number of shooting nodes
 T = 100

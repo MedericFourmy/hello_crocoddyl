@@ -1,7 +1,7 @@
 import numpy as np
 import pinocchio as pin
 from example_robot_data import load
-import utils
+from unified_simulators.utils import freezed_robot
 
 
 class GviewerMpc:
@@ -14,7 +14,7 @@ class GviewerMpc:
         robot = load(robot_name)
 
         if fixed_joints is not None:
-            robot = utils.freezed_robot(robot, fixed_joints)
+            robot = freezed_robot(robot, fixed_joints)
 
         self.robots = []
         self.vizs = []

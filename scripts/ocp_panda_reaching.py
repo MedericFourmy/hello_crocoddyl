@@ -17,7 +17,7 @@ from example_robot_data import load
 
 from bench_croco import MPCBenchmark
 from ocp_pbe_def import create_ocp_reaching_pbe
-import utils
+from unified_simulators.utils import freezed_robot
 
 GOAL_IS_SE3 = False
 VERBOSE = True
@@ -34,7 +34,7 @@ robot = load('panda')
 ee_name = 'panda_link8'
 fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
 # fixed_joints = None
-robot = utils.freezed_robot(robot, fixed_joints)
+robot = freezed_robot(robot, fixed_joints)
 
 
 delta_trans = np.array([-0.31, -0.3, -0.0])

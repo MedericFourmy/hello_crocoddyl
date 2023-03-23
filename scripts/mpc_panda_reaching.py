@@ -6,8 +6,8 @@ from example_robot_data import load
 
 # from unified_simulators.pinocchio_sim import PinocchioSim as Simulator
 from unified_simulators.pybullet_sim import PybulletSim as Simulator
+from unified_simulators.utils import freezed_robot
 from gviewer_mpc import GviewerMpc
-import utils
 
 np.set_printoptions(precision=4, linewidth=180)
 
@@ -21,7 +21,7 @@ robot = load(robot_name)
 ee_name = 'panda_link8'
 fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
 # fixed_joints = None
-robot = utils.freezed_robot(robot, fixed_joints)
+robot = freezed_robot(robot, fixed_joints)
 
 # delta_trans = np.array([0.0, 0.0, 0.0])
 # delta_trans = np.array([0.0, 0.0, 0.4])
