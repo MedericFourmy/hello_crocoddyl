@@ -3,31 +3,34 @@ import matplotlib.pyplot as plt
 import numpy as np
 np.set_printoptions(precision=4, linewidth=180)
 import pinocchio as pin
+from example_robot_data import load
 
-import config_panda as conf 
 from bench_croco import MPCBenchmark
 from ocp_pbe_def import create_ocp_reaching_pbe
+import utils
 
 
-
-# Load model (hardcoded for now, eventually should be in example-robot-data)
-robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
+robot_name = 'panda'
+robot = load(robot_name)
+ee_name = 'panda_link8'
+fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
+# fixed_joints = None
+robot = utils.freezed_robot(robot, fixed_joints)
 
 # Number of shooting nodes
 T = 100
 dt = 1e-2  # seconds
 
 # franka_control/config/start_pose.yaml
-q0 = np.array([0, -0.785398163397, 0, -2.35619449019, 0, 1.57079632679, 0.785398163397])
-v0 = np.zeros(7)
-x0 = np.concatenate([q0, v0])
+v0 = np.zeros(robot.nv)
+x0 = np.concatenate([robot.q0, v0])
 
-oMe_0 = robot.framePlacement(q0, robot.model.getFrameId(conf.ee_name), update_kinematics=True)
+oMe_0 = robot.framePlacement(robot.q0, robot.model.getFrameId(ee_name), update_kinematics=True)
 
 N_SOLVE = 5
 
-NX, NY = 25, 25
-# NX, NY = 10, 5
+NX, NY = 10, 10
+# NX, NY = 25, 25
 dx_vals = np.linspace(-0.8, 0.3, NX)
 dy_vals = np.linspace(-0.5, 0.5, NY)
 dx_vals = np.around(dx_vals, 2)
@@ -59,7 +62,7 @@ for i, dx in enumerate(dx_vals):
         oMe_goal.translation += delta_trans
         oMe_goal.rotation = np.eye(3)
         # TODO: change ref instead of creating new one
-        ddp = create_ocp_reaching_pbe(robot.model, x0, conf.ee_name, oMe_goal, T, dt, goal_is_se3=False, verbose=False)
+        ddp = create_ocp_reaching_pbe(robot.model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=False, verbose=False)
 
         # Solve and measure timings
         bench.reset_profiles()

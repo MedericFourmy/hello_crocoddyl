@@ -13,10 +13,11 @@ import numpy as np
 np.set_printoptions(precision=4, linewidth=180)
 import pinocchio as pin
 import ocp_utils
+from example_robot_data import load
 
-import config_panda as conf 
 from bench_croco import MPCBenchmark
 from ocp_pbe_def import create_ocp_reaching_pbe
+import utils
 
 GOAL_IS_SE3 = False
 VERBOSE = True
@@ -28,10 +29,13 @@ SAVE_DIR = '/home/mfourmy/Downloads/'
 LABEL = 'slow'
 
 
-# Load model (hardcoded for now, eventually should be in example-robot-data)
-# robot = pin.RobotWrapper.BuildFromURDF(conf.urdf_path, conf.package_dirs)
-from example_robot_data import load
+
 robot = load('panda')
+ee_name = 'panda_link8'
+fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
+# fixed_joints = None
+robot = utils.freezed_robot(robot, fixed_joints)
+
 
 delta_trans = np.array([-0.31, -0.3, -0.0])
 # delta_trans = np.array([-0.0, -0.0, -0.0])
@@ -40,13 +44,14 @@ delta_trans = np.array([-0.31, -0.3, -0.0])
 T = 50
 dt_ocp = 1e-2  # seconds
 
-oMe_0 = robot.framePlacement(conf.q0, robot.model.getFrameId(conf.ee_name), update_kinematics=True)
+oMe_0 = robot.framePlacement(robot.q0, robot.model.getFrameId(ee_name), update_kinematics=True)
 oMe_goal = oMe_0.copy()
 oMe_goal.translation += delta_trans
 oMe_goal.rotation = np.eye(3)
 print(oMe_0)
 
-ddp = create_ocp_reaching_pbe(robot.model, conf.x0, conf.ee_name, oMe_goal, T, dt_ocp, goal_is_se3=GOAL_IS_SE3, verbose=VERBOSE)
+x0 = np.concatenate([robot.q0, np.zeros(robot.nv)])
+ddp = create_ocp_reaching_pbe(robot.model, x0, ee_name, oMe_goal, T, dt_ocp, goal_is_se3=GOAL_IS_SE3, verbose=VERBOSE)
 # ddp.th_stop = 1e-15
 
 
@@ -54,11 +59,11 @@ bench = MPCBenchmark()
 bench.start_croco_profiler()
 
 # Warm start : initial state + gravity compensation
-xs_init = [conf.x0 for i in range(T + 1)]
+xs_init = [x0 for i in range(T + 1)]
 # TODO: check same as 
 us_init = ddp.problem.quasiStatic(xs_init[:-1])
 us_init_bis = np.array(
-    [robot.gravity(conf.q0)]
+    [robot.gravity(robot.q0)]
 )
 ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
 
@@ -68,20 +73,20 @@ bench.record_profiles()
 # bench.plot_profiles()
 
 # Extract DDP data and plot
-ddp_data = ocp_utils.extract_ocp_data(ddp, conf.ee_name)
+ddp_data = ocp_utils.extract_ocp_data(ddp, ee_name)
 
 #  Warm start using exactly the previous solution
-ddp.problem.x0 = conf.x0
+ddp.problem.x0 = x0
 xs_init = ddp.xs
 us_init = ddp.us 
 ddp.solve(xs_init, us_init, maxiter=100, isFeasible=False)
-ddp_data = ocp_utils.extract_ocp_data(ddp, conf.ee_name)
+ddp_data = ocp_utils.extract_ocp_data(ddp, ee_name)
 
 # solution joint trajectory
 xs = np.array(ddp.xs)
 q_final = xs[-1, : robot.model.nq]
 oMe_fin = robot.framePlacement(
-    q_final, robot.model.getFrameId(conf.ee_name), update_kinematics=True
+    q_final, robot.model.getFrameId(ee_name), update_kinematics=True
 )
 
 if SAVE:

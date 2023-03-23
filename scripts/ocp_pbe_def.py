@@ -78,7 +78,7 @@ def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=Tru
     # Control regularization
     w_u_reg_running = 0.01
     diag_u_reg_arr = np.array([
-        1, 1, 1, 1, 1, 1, 10
+        1, 1, 1, 1, 1, 1, 1
     ])
 
 
@@ -142,7 +142,7 @@ def create_ocp_reaching_pbe(model, x0, ee_name, oMe_goal, T, dt, goal_is_se3=Tru
     )
     terminalModel = crocoddyl.IntegratedActionModelEuler(terminal_DAM, 0.0)
     # Optionally add armature to take into account actuator's inertia
-    terminalModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+    # terminalModel.differential.armature = np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 
     # Create the shooting problem
     problem = crocoddyl.ShootingProblem(x0, runningModel_lst, terminalModel)

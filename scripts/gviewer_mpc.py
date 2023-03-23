@@ -1,23 +1,28 @@
 import numpy as np
 import pinocchio as pin
 from example_robot_data import load
+import utils
 
 
 class GviewerMpc:
 
-    def __init__(self, nb_keyframes, q0, color_start=[1, 0, 0, 0.2], color_end=[0, 1, 0, 0.2]) -> None:
+    def __init__(self, robot_name, nb_keyframes, fixed_joints=None, color_start=[1, 0, 0, 0.2], color_end=[0, 1, 0, 0.2]) -> None:
 
         assert (nb_keyframes > 0)
         self.nb_keyframes = nb_keyframes
 
-        colors = np.linspace(color_start, color_end, nb_keyframes)
+        robot = load(robot_name)
+
+        if fixed_joints is not None:
+            robot = utils.freezed_robot(robot, fixed_joints)
 
         self.robots = []
         self.vizs = []
         for i in range(nb_keyframes):
             # We need to load the panda model from example_robot_data to be able to color it
             # in GepettoViewer (not sure why) -> harcode panda for now
-            r = load('panda')
+            r = pin.RobotWrapper(robot.model, robot.collision_model, robot.visual_model)
+            r.q0 = robot.q0
             self.robots.append(r)
             viz = pin.visualize.GepettoVisualizer(
                 model=r.model,
@@ -31,11 +36,12 @@ class GviewerMpc:
         self.gv = viz.viewer.gui
 
         # change color and transparency of preview robots using there name in the scene graph
+        colors = np.linspace(color_start, color_end, nb_keyframes)
         for node in self.gv.getNodeList():
             for i in range(nb_keyframes):
                 if f'/preview_{i}' in node:
                     self.gv.setColor(node, colors[i].tolist())
-        self.display(self.nb_keyframes*[q0])
+        self.display(self.nb_keyframes*[r.q0])
         self.gv.refresh()
 
     def display(self, q_lst):
@@ -45,7 +51,6 @@ class GviewerMpc:
         # Panda from example_robot_data has 2 more degrees of freedom than
         #  -> hack: append 2 zero valued coordinates
         for viz, q in zip(self.vizs, q_lst):
-            q = np.hstack([q, [0, 0]])
             viz.display(q)
 
     def display_keyframes(self, qs):
@@ -56,6 +61,8 @@ class GviewerMpc:
         -> select keyframes with equal time separation, including the last 
         moment, excluding the current state (assumed to be handled by the user)
         """
+        assert(qs.shape[1] == self.robots[0].nq)
+
         indices = (len(qs)/self.nb_keyframes)*np.arange(self.nb_keyframes)
         indices = indices.astype(np.int64)
 
@@ -72,23 +79,24 @@ class GviewerMpc:
 
 
 if __name__ == '__main__':
-    import config_panda as conf
     from copy import deepcopy
+
+    robot_name = 'panda'
+    fixed_joints = ['panda_finger_joint1', 'panda_finger_joint2']
+    # fixed_joints = None
     nb = 5
-    gmpc = GviewerMpc(nb, conf.q0)
+
+    gmpc = GviewerMpc(robot_name, nb, fixed_joints)
+    robot = gmpc.robots[0]
     q_lst = []
     for i in range(nb):
-        q = deepcopy(conf.q0)
-        q[0] = i*np.pi/5
+        q = deepcopy(robot.q0)
+        q[1] = i*np.pi/5
         q_lst.append(q)
-    # print(q_lst)
     # gmpc.display(q_lst)
 
     # qs
     ls = 113
-    qs = np.linspace(np.zeros(7), conf.q0, ls)
+    qs = np.linspace(np.zeros(robot.model.nq)-0.3, robot.q0, ls)
     gmpc.display_keyframes(qs)
 
-    # q_arr_preview = gmpc.display_keyframes(qs)
-    # print(q_arr_preview)
-    # print(conf.q0)
