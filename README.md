@@ -1,3 +1,12 @@
 # hello_crocoddyl
 
-Run benchmarks and explore C++/python API of crocoddyl.
+Exploration of the python/C++ API of crocoddyl.
+
+## dependencies
+`conda install pinocchio crocoddyl`
+
+For simulation:  
+`pip install git+https://github.com/MedericFourmy/unified_simulators`
+
+
+
